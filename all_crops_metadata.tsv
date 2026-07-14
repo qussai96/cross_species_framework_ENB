@@ -1,0 +1,106 @@
+RawFileFolder	FASTA	Name	Status	Tissue count	Taxid	Common name	cultivar	Species	Genus	Family	Order	Class	Phylum	Kingdom	Genome size (bp)	Fasta proteins
+5203_Quinoa_E1	GCF_001683475.1_Chenopodium_quinoa.faa	Quinoa	Done	18	63459	Quinoa	PI 614886 (QQ74)	Chenopodium quinoa	Chenopodium	Chenopodiaceae	Caryophyllales	eudicots	Streptophyta	Viridiplantae	1333398936	63173
+6235_WhiteCabbage_BOW_HFX	GCA_034638355.1_Brassica_oleracea_var_capitata.helixer.faa	WhiteCabbage	Done	31	3716	Cabbage	Autumn Baron F1 / 'Granat' and 'Dottenfelder Dauer'	Brassica oleracea var. capitata	Brassica	Brassicaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	570700000	57424
+6236_Strawberry_FA_HFX	GCA_034370585.1_Fragaria_x_ananassa.helixer.faa	Strawberry	Done	15	3747	Strawberry	Camarosa	Fragaria x ananassa	Fragaria	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	793463571	101942
+6237_Carrot_DC_HFX	GCF_001625215.2_Daucus_carota.faa	Carrot	Done	16	4039	Carrot	Rotin / Nantaise 2/Milan	Daucus carota	Daucus	Apiaceae	Apiales	eudicots	Streptophyta	Viridiplantae	440713325	49321
+6238_Spinach_SO_HFX	GCF_020520425.1_Spinacia_oleracea.faa	Spinach	Done	13	3562	Spinach	Viroflay	Spinacia oleracea	Spinacia	Chenopodiaceae	Caryophyllales	eudicots	Streptophyta	Viridiplantae	894256318	40779
+6239_6240_Banana_MP_HFX	Musa_x_paradisiaca.helixer.faa	Banana	Done	23	89151	Banana	Dwarf Carwendish	Musa x paradisiaca	Musa	Musaceae	Zingiberales	monocots	Streptophyta	Viridiplantae	1414463603	101288
+6331_6332_Watermelon_WCL_HFX	GCA_039639715.1_Citrullus_lanatus.helixer.faa	Watermelon	Done	23	3654	Watermelon	Top Gun F1	Citrullus lanatus	Citrullus	Cucurbitaceae	Cucurbitales	eudicots	Streptophyta	Viridiplantae	373729396	20866
+6333_6334_Tomato_SLT_HFX	SlycopersicumM82_proteins.fasta	Tomato	Done	19	4081	Tomato	M82	Solanum lycopersicum	Solanum	Solanaceae	Solanales	eudicots	Streptophyta	Viridiplantae	832773323	44391
+6335_Cassava_MeC_HFX	GCF_001659605.2_Manihot_esculenta.faa	Cassava	Done	16	3983	Cassava	TME693	Manihot esculenta	Manihot	Euphorbiaceae	Malpighiales	eudicots	Streptophyta	Viridiplantae	639586700	49290
+6336_Cucumber_CsCv_HFX	GCF_000004075.3_Cucumis_sativus.faa	Cucumber	Done	16	3659	Cucumber	Paska F1 / Vorgebirgstrauben	Cucumis sativus	Cucumis	Cucurbitaceae	Cucurbitales	eudicots	Streptophyta	Viridiplantae	224801081	30919
+6337_Pineapple_ACP_HFX	GCF_001540865.1_Ananas_comosus.faa	Pineapple	Done	9	4615	Pineapple	MD-2	Ananas comosus	Ananas	Bromeliaceae	Poales	monocots	Streptophyta	Viridiplantae	381896302	35774
+6387_Asparagus_AO_HFX	GCF_001876935.1_Asparagus_officinalis.faa	Asparagus	Done	15	4686	Asparagus	Schwetzinger Meisterschuss	Asparagus officinalis	Asparagus	Asparagaceae	Asparagales	monocots	Streptophyta	Viridiplantae	1187538024	35986
+6388_Buckwheath_FEB_HFX	GCA_033239045.1_Fagopyrum_esculentum.helixer.faa	Buckwheat	Done	12	3617	Buckwheat	Billy	Fagopyrum esculentum	Fagopyrum	Polygonaceae	Caryophyllales	eudicots	Streptophyta	Viridiplantae	1266838060	35999
+6389_Maize_ZM_HFX_7062_Exploris	GCF_902167145.1_Zea_mays.faa	Maize	Done	17	4577	Maize	B73	Zea mays	Zea	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	2182075994	57345
+6526_6527_Hops_HLL_E3	GCF_963169125.1_Humulus_lupulus.faa	Hops	Done	20	1571165	Hops		Humulus lupulus	Humulus	Cannabaceae	Rosales	eudicots	Streptophyta	Viridiplantae	2488098718	47669
+6528_6529_Lupin_SL_HFX	Lupinus_perennus.helixer.faa	Lupin	Done	25	53236	Lupin	Frida	Lupinus perennis	Lupinus	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	772079689	38196
+6530_6531_6554_SugarBeet_BV_HFX	GCF_026745355.1_Beta_vulgaris.faa	Sugarbeet	Done	30	161934	Sugar beet	EL10	Beta vulgaris	Beta	Chenopodiaceae	Caryophyllales	eudicots	Streptophyta	Viridiplantae	568751015	36388
+6532_6533_6554_Rice_OS_HFX	GCF_034140825.1_Oryza_sativa.faa	Rice	Done	28	4530	Rice	Nipponbare	Oryza sativa	Oryza	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	385710679	42933
+6555_6571_Pomelo_CiMa_E3	GCA_047301065.1_Citrus_Maxima.helixer.faa	Pomelo	Done	24	37334	Pumelo	Chandler	Citrus maxima	Citrus	Rutaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	311500000	27559
+6556_6557_GreenPepper_D_E3	GCF_002878395.1_Capsicum_annuum.faa	GreenPepper	Done	27	4072	Green pepper	California Wonder	Capsicum annuum	Capsicum	Solanaceae	Solanales	eudicots	Streptophyta	Viridiplantae	3211819707	51545
+6567_6768_Chickpea_CA_HFX	GCF_000331145.2_Cicer_arietinum.faa	Chickpea	Done	18	3827	Chick pea	Sultano	Cicer arietinum	Cicer	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	530271971	35906
+6569_Mandarine_CR_HFX	GCA_036169575.1_Citrus_reticulata.helixer.faa	Mandarine	Done	17	85571	Mandarine	Cleopatra	Citrus reticulata	Citrus	Rutaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	303165851	27310
+6570_6571_Orange_CS_E3	GCF_022201045.2_Citrus_sinensis.faa	Orange	Done	19	2711	Sweet orange	Pineapple	Citrus sinensis	Citrus	Rutaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	298977511	40427
+6572_Pearlmillet_Ca_E3	GCA_963924085.1_Cenchrus_americanus.helixer.faa	Pearlmillet	Done	16	4543	Pearl millet	Tift23DB	Cenchrus americanus	Cenchrus	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	1914840079	47704
+6573_6574_6598_Gardenpea_PS_HFX	GCF_024323335.1_Pisum_sativum.faa	Gardenpea	Done	20	3888	Garden pea	Sweet Horizon	Lathyrus oleraceus	Pisum	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	3796066963	51096
+6596_6598_Pumpkin_Cms_HFX	GCF_002806865.2_Cucurbita_pepo.faa	Pumpkin	Done	23	3663	Pumpkin	Betty Blau F1	Cucurbita pepo	Cucurbita	Cucurbitaceae	Cucurbitales	eudicots	Streptophyta	Viridiplantae	259381069	43464
+6597_6598_Almond_PrDu_HFX	Pdulcis_Texas_F0_protein.fasta	Almond	Done	20	3755	Almond	Texas	Prunus dulcis	Prunus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	227599157	33316
+6599_Chinese_Tea_CaS_HFX	GCA_004153795.2_Camellia_sinensis.faa	ChineseTea	Done	17	4442	Tea	Longjing43	Camellia sinensis	Camellia	Theaceae	Ericales	eudicots	Streptophyta	Viridiplantae	3105212962	30168
+6600_Soy_S_HFX	GCF_000004515.6_Glycine_max.faa	Soybean	Done	17	3847	Soybean	ES Comandor	Glycine max	Glycine	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	978386919	74183
+6601_ChineseCabbage_BRP_HFX	GCA_008629595.1_Brassica_rapa_subsp_pekinensis.helixer.faa	ChineseCabbage	Done	16	51351	Chinese cabbage		Brassica rapa subsp. pekinensis	Brassica	Brassicaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	234688483	44720
+6658_6659_Peppermint_ML_E3	GCA_041146485.1_Mentha_x_piperita.helixer.faa	Peppermint	Done	22	34256	Peppermint	Mentha spicata ‘Spearmint’ (com. cv)	Mentha x piperita	Mentha	Lamiaceae	Lamiales	eudicots	Streptophyta	Viridiplantae	2040613434	190432
+6660_6661_Melon_Cm_E3	GCF_025177605.1_Cucumis_melo.faa	Melon	Done	23	3656	Melon	Magenta	Cucumis melo	Cucumis	Cucurbitaceae	Cucurbitales	eudicots	Streptophyta	Viridiplantae	438252206	35816
+6662_WinterWheat_E3	Triticum_aestivum_julius.PGSBv2.1.pep.all.fa	WinterWheat	Done	16	4565	Bread wheat	Julius	Triticum aestivum	Triticum	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	14566502436	142400
+6664_6665_BrownMustard_BJ_E3	GCA_018703725.1_Brassica_juncea.helixer.faa	BrownMustard	Done	19	323352	Brown mustard	Old Fashioned	Brassica juncea	Brassica	Brassicaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	933495403	100174
+6665_6666_Cauliflower_BOB_E3	GCA_034640245.1_Brassica_oleracea_var_botrytis.helixer.faa	Cauliflower	Done	19	3715	Cauliflower	Freiheit F1	Brassica oleracea var. botrytis	Brassica	Brassicaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	534400000	56359
+6667_6668_Flax_LU_E3	GCA_051167515.1_Linum_usitatissimum.helixer.faa	Flax	Done	22	4006	Flax	Blaues Wunder	Linum usitatissimum	Linum	Linaceae	Malpighiales	eudicots	Streptophyta	Viridiplantae	494853525	46232
+6668_6669_Okra_AE_E3	GCA_035048815.1_Abelmoschus_esculentus.helixer.faa	Okra	Done	23	455045	Okra	Clemens Spineless	Abelmoschus esculentus	Abelmoschus	Malvaceae	Malvales	eudicots	Streptophyta	Viridiplantae	1194595883	116565
+6709_6710_BroadBean_Vf_E3	GCA_048183575.1_Vicia_faba.faa	BroadBean	Done	18	3906	Broad beans	Aquadulce	Vicia faba	Vicia	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	11807183301	37398
+6711_6712_Apricot_Exploris	GCA_903112645.1_Prunus_armeniaca.faa	Apricot	Done	21	36596	Apricot	Harogem	Prunus armeniaca	Prunus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	215952222	30573
+6713_6714_6936_Apple_E3	Mdomesticus_Gala_haploid_v2.pep.fa	Apple	Done	23	3750	Apple	Gala	Malus domestica	Malus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	650775246	61242
+6715_6716_CommonBean_E3	GCF_000499845.2_Phaseolus_vulgaris.faa	CommonBean	Done	20	3885	Common bean	Cobra	Phaseolus vulgaris	Phaseolus	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	537154354	43271
+6716_6717_6718_SourCherry_E3	Pcer_mont_QTL_update2_proteins.fasta	SourCherry	Done	38	140311	Sour cherry	Schattenmorelle	Prunus cerasus	Prunus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	1066031165	97385
+6719_Oat_AVS_E1	SANG.high_longest.flt.aa.fa	Oat	Done	15	4498	Oat	Sang	Avena sativa	Avena	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	10935490949	191484
+6736_6737_Hazelnut_E3	GCF_901000735.1_Corylus_avellana.faa	Hazelnut	Done	18	13451	Hazelnut	Webbs Preisnuss	Corylus avellana	Corylus	Betulaceae	Fagales	eudicots	Streptophyta	Viridiplantae	369779143	36019
+6738_Sorghum_SBK_E1	GCF_000003195.3_Sorghum_bicolor.faa	Sorghum	Done	14	4558	Sorghum	BTX-623	Sorghum bicolor	Sorghum	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	708735318	39245
+6739_Onion_E3	GCA_030765085.1_Allium_cepa.helixer.faa	Onion	Done	14	4679	Onion	Satimex Sommerzwiebel 'Valencia' & 'Stuttgarter Riesen'	Allium cepa	Allium	Amaryllidaceae	Asparagales	monocots	Streptophyta	Viridiplantae	15932385976	136325
+6755_6756_Walnut_E3	GCF_001411555.2_Juglans_regia.faa	Walnut	Done	27	51240	Walnut	Nr. 120	Juglans regia	Juglans	Juglandaceae	Fagales	eudicots	Streptophyta	Viridiplantae	572786133	45959
+6757_6758_Grapevine_E3	GCF_030704535.1_Vitis_vinifera.faa	Grapevine	Done	21	29760	Grapevine	Muscat Bleu	Vitis vinifera	Vitis	Vitaceae	Vitales	eudicots	Streptophyta	Viridiplantae	494873210	40633
+6761_Barley_E1	Hordeum_vulgare_rgtplanet.Hvulgare_cv_RGT_Planet_BPGv2.pep.all.fa	Barley	Done	15	4513	Barley	RGT Planet	Hordeum vulgare	Hordeum	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	4225577519	40284
+6762_6903_WhiteYam_E3	GCF_009730915.1_Dioscorea_rotundata.faa	WhiteYam	Done	11	55577	White yam	TDr 04-219 (Amula)	Dioscorea cayenensis subsp. rotundata	Dioscorea	Dioscoreaceae	Dioscoreales	monocots	Streptophyta	Viridiplantae	584153202	33296
+6763_Peach_E1	Ppersica_Lovell_2D_v3.0.proteins.fa	Peach	Done	16	3760	Peach	Red Haven	Prunus persica	Prunus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	227411381	32593
+6764_6765_Peanut_E3	GCF_003086295.3_Arachis_hypogaea.faa	Peanut	Done	23	3818	Peanut	Jimmy's Pride	Arachis hypogaea	Arachis	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	2557413415	115651
+6850_6851_6899_Sesame_Exploris	GCF_000512975.1_Sesamum_indicum.faa	Sesame	Done	19	4182	Sesame	unknown (DE)	Sesamum indicum	Sesamum	Pedaliaceae	Lamiales	eudicots	Streptophyta	Viridiplantae	274906174	35100
+6852_6853_Fig_E1	GCA_042847195.1_Ficus_carica.helixer.faa	Fig	Done	26	3494	Fig tree	Sarilop and Bursa Siyahı	Ficus carica	Ficus	Moraceae	Rosales	eudicots	Streptophyta	Viridiplantae	318315163	28379
+6854_Pear_E1	PyrusCommunis_BartlettDHv2.0.pep.fasta	Pear	Done	15	23211	Pear	Red Bartlet	Pyrus communis	Pyrus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	487337232	43421
+6855_6856_Sunflower_E3	GCF_002127325.2_Helianthus_annuus.faa	Sunflower	Done	18	4232	Sunflower	XRQ	Helianthus annuus	Helianthus	Asteraceae	Asterales	eudicots	Streptophyta	Viridiplantae	3009595538	75695
+6876_Pomegranate_E3	GCF_007655135.1_Punica_granatum.faa	Pomegranate	Done	13	22663	Pomegranate	Hicaz	Punica granatum	Punica	Lythraceae	Myrtales	eudicots	Streptophyta	Viridiplantae	320300000	36608
+6877_6972_Sweet_cherry_E1	GCF_002207925.1_Prunus_avium.faa	SweetCherry	Done	17	42229	Sweet cherry	Lapins	Prunus avium	Prunus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	272361615	34952
+6878_6879_Kiwi_E3	GCA_051167385.1_Actinidia_chinensis.helixer.faa	Kiwi	Done	28	3625	Kiwi fruit		Actinidia chinensis	Actinidia	Actinidiaceae	Ericales	eudicots	Streptophyta	Viridiplantae	607462286	43930
+6889_6890_6965_Bambara_Exploris	Vigna_subterranea.helixer.faa	Bambaragroundnut	Done	26	115715	Bambara groundnut		Vigna subterranea	Vigna	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	535052523	38968
+6891_6892_6966_Asian_Eggplant_Exploris	Eggplant_V4.1_protein.function.fa	AsianEggplant	Done	28	4111	Asian eggplant	Schwarze Elise F1	Solanum melongena	Solanum	Solanaceae	Solanales	eudicots	Streptophyta	Viridiplantae	1164419523	36722
+6900_Cow_Pea_E1	GCF_004118075.2_Vigna_unguiculata.faa	Cowpea	Done	12	3917	Cowpea	Canetti	Vigna unguiculata	Vigna	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	518595462	41082
+6901_Artichokes_E3	GCF_001531365.2_Cynara_cardunculus.faa	Artichokes	Done	8	4265	Artichokes	Imperial Star	Cynara cardunculus	Cynara	Asteraceae	Asterales	eudicots	Streptophyta	Viridiplantae	724962400	37990
+6902_6964_White_Phonio_Exploris	GCA_015342445.1_Digitaria_exilis.faa	WhiteFonio	Done	18	1010633	white fonio	White fennel	Digitaria exilis	Digitaria	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	760650579	61937
+6904_Quince_Exploris	GCA_015708375.1_Cydonia_oblonga.helixer.faa	Quince	Done	16	36610	Quince	Konstantinopler	Cydonia oblonga	Cydonia	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	488422409	108733
+6905_kaki_Exploris	GCA_036245055.1_Diospyrus_kaki.helixer.faa	Persimmons	Done	12	35925	Persimmons		Diospyros kaki	Diospyros	Ebenaceae	Ericales	eudicots	Streptophyta	Viridiplantae	708766281	28061
+6935_6934_Chestnut_E3	GCA_040712315.1_Castanea_sativa.helixer.faa	Chestnut	Done	22	21020	Chestnut		Castanea sativa	Castanea	Fagaceae	Fagales	eudicots	Streptophyta	Viridiplantae	716029944	34067
+6937_6938_Sweet_potato_Exploris	GCA_002525835.2_Ipomoea_batatas.helixer.faa	SweetPotato	Done	21	4120	Sweet potato	Beauregard	Ipomoea batatas	Ipomoea	Convolvulaceae	Solanales	eudicots	Streptophyta	Viridiplantae	837013208	82206
+6939_6940_Lentil_Exploris	Lens_culinaris_718_v1.protein.faa	Lentil	Done	19	3864	Lentil	Späths Alblinse II	Lens culinaris	Lens	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	3759696924	39141
+6941_African_oil_palm_Exploris	GCF_000442705.2_Elaeis_guineensis.faa	AfricanOilPalm	Done	16	51953	African oil palm	Dabou x LaMa	Elaeis guineensis	Elaeis	Arecaceae	Arecales	monocots	Streptophyta	Viridiplantae	1841922575	48771
+6960_Raspberry_E3	GCA_047496405.1_Rubus_idaeus.helixer.faa	Raspberry	Done	11	32247	Raspberry	Autumns Bliss	Rubus idaeus	Rubus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	276910634	27943
+6961_RedCurrant_E3	GCA_965178245.1_Ribes_rubrum.helixer.faa	RedCurrant	Done	11	175228	Red currant	Rodneus	Ribes rubrum	Ribes	Grossulariaceae	Saxifragales	eudicots	Streptophyta	Viridiplantae	834940214	46509
+6962_6963_Potato_Exploris	GCF_000226075.1_Solanum_tuberosum.faa	Potato	Done	23	4113	Potato	Cara	Solanum tuberosum	Solanum	Solanaceae	Solanales	eudicots	Streptophyta	Viridiplantae	705779115	37963
+6967_Coffee_Exploris	GCF_036785885.1_Coffea_arabica.faa	Coffee	Done	15	13443	Coffee		Coffea arabica	Coffea	Rubiaceae	Gentianales	eudicots	Streptophyta	Viridiplantae	1198133039	84721
+6968_Mulberry_E3	GCA_012066045.3_Morus_alba.helixer.faa	Mulbery	Done	14	3498	Mulberry		Morus alba	Morus	Moraceae	Rosales	eudicots	Streptophyta	Viridiplantae	336455645	25982
+6969_Cashew_Exploris	GCA_026122585.1_Anacardium_occidentale.helixer.faa	Cashew	Done	6	171929	Cashew tree		Anacardium occidentale	Anacardium	Anacardiaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	356592713	31907
+6973_Gooseberry_E3	GCA_965211865.1_Ribes_uva-crispa.helixer.faa	Goosberry	Done	15	135518	Gooseberry		Ribes uva-crispa	Ribes	Grossulariaceae	Saxifragales	eudicots	Streptophyta	Viridiplantae	813097327	47596
+6974_Taro_E3	GCA_014218235.1_Colocasia_esculenta.helixer.faa	Taro	Done	11	4460	Taro	"Giant (Sku1000083	 NL)"	Colocasia esculenta	Colocasia	Araceae	Alismatales	monocots	Streptophyta	Viridiplantae	2405846852	31648
+6987_Olive_E3	Olea_europaea.OLEA9.pep.all.fa	Olive	Done	8	4146	Olive	Farga	Olea europaea	Olea	Oleaceae	Lamiales	eudicots	Streptophyta	Viridiplantae	1140989389	58326
+6988_7053_Pigeon_pea_E3	GCF_000340665.2_Cajanus_cajan.faa	PigeonPea	Done	17	3821	Pigeon peas	Gungo	Cajanus cajan	Cajanus	Fabaceae	Fabales	eudicots	Streptophyta	Viridiplantae	590369945	41143
+7049_Black_pepper_E3	Piper_nigrum.helixer.faa	BlackPepper	Done	5	13216	Black pepper		Piper nigrum	Piper	Piperaceae	Piperales	eudicots	Streptophyta	Viridiplantae	761218309	56646
+7050_7060_Safflower_E3	Saf_v1_peps.fasta	Safflower	Done	14	4222	Safflower	Feuerschopf	Carthamus tinctorius	Carthamus	Asteraceae	Asterales	eudicots	Streptophyta	Viridiplantae	661937708	45331
+7051_7052_Cocoa_tree_Exploris	GCF_000208745.1_Theobroma_cacao.faa	CocoaTree	Done	27	3641	Cocoa tree		Theobroma cacao	Theobroma	Malvaceae	Malvales	eudicots	Streptophyta	Viridiplantae	324719311	30852
+7061_Sugar_cane_Exploris	Saccharum_officinarum_LA-Purple.protein.faa	Sugarcane	Done	8	4547	Sugar cane	Flor de Cuba	Saccharum officinarum	Saccharum	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	6804885551	255122
+7063_Garlic_Exploris	GCA_030737875.1_Allium_sativum.helixer.faa	Garlic	Done	10	4682	Garlic	Cledor	Allium sativum	Allium	Amaryllidaceae	Asparagales	monocots	Streptophyta	Viridiplantae	16462794857	98206
+7064_Fennel_Exploris	GCA_003724115.2_Foeniculum_vulgare.helixer.faa	Fennel	Done	14	2849586	Fennel	Finale	Anethum foeniculum	Anethum	Apiaceae	Apiales	eudicots	Streptophyta	Viridiplantae	1011385054	105610
+7065_Cranberry_Exploris	GCA_022606695.1_Vaccinium_macrocarpon.helixer.faa	Cranberry	Done	12	13750	Cranberries	Red Star	Vaccinium macrocarpon	Vaccinium	Ericaceae	Ericales	eudicots	Streptophyta	Viridiplantae	484919498	30009
+7066_7067_7126_Lemon_E3	GCA_034663535.1_Citrus_x_limon.helixer.faa	Lemon	Done	24	2708	Lemon		Citrus x limon	Citrus	Rutaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	307473079	26890
+7068_7069_Avocado_E3	GCA_051132755.1_Persea_americana.faa	Avocado	Done	18	3435	Avocado		Persea americana	Persea	Lauraceae	Laurales	eudicots	Streptophyta	Viridiplantae	841551734	51816
+7070_Mango_E3	GCF_011075055.1_Mangifera_indica.faa	Mango	Done	16	29780	Mango		Mangifera indica	Mangifera	Anacardiaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	391961648	52077
+7071_7072_Ginger_Exploris	GCF_018446385.1_Zingiber_officinale.faa	Ginger	Done	18	94328	Ginger	Nadia	Zingiber officinale	Zingiber	Zingiberaceae	Zingiberales	monocots	Streptophyta	Viridiplantae	3090266393	101860
+7120_7121_7122_Rapeseed_Exploris	GCF_020379485.1_Brassica_napus.faa	Rapeseed	Done	38	3708	Rapeseed	Express 617	Brassica napus	Brassica	Brassicaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	1001499700	120347
+7123_7124_Lettuce_E3	GCF_002870075.4_Lactuca_sativa.faa	Lettuce	Done	18	4236	Lettuce	Finja	Lactuca sativa	Lactuca	Asteraceae	Asterales	eudicots	Streptophyta	Viridiplantae	2589853228	47803
+7129_Yerba_mate_E3	GCA_963454935.2_Ilex_paraguariensis.faa	YerbaMate	Done	11	185542	Yerba Mate		Ilex paraguariensis	Ilex	Aquifoliaceae	Aquifoliales	eudicots	Streptophyta	Viridiplantae	1064802823	55494
+7130_7131_Vanilla_Exploris	GCA_023846275.1_Vanilla_planifolia.helixer.faa	Vanilla	Done	18	51239	Vanilla		Vanilla planifolia	Vanilla	Orchidaceae	Asparagales	monocots	Streptophyta	Viridiplantae	1416355720	21316
+7189_7190_Blueberry_Exploris	GCA_014504835.1_Vaccinium_corymbosum.helixer.faa	Blueberry	Done	19	69266	blueberry	Draper	Vaccinium corymbosum	Vaccinium	Ericaceae	Ericales	eudicots	Streptophyta	Viridiplantae	393150603	34537
+6758_6759_6760_Plum_E3	P.domestica_Genome-Dardick_v1.0.proteins.faa	Plum			3758	Plum		Prunus domestica	Prunus	Rosaceae	Rosales	eudicots	Streptophyta	Viridiplantae	1334993823	138086
+6986_Rye_E3	Secale.cereale.Lo7V3.pgsb.r2.Feb2025_all.faa	Rye		16	4550	Rye		Secale cereale	Secale	Poaceae	Poales	monocots	Streptophyta	Viridiplantae	6702647067	83327
+7127_7128_Grapefruit_CXP_E3	GCA_001929425.1_Citrus_x_paradisi.helixer.faa	Grapefruit		21	37656	Grapefruit		Citrus x paradisi	Citrus	Rutaceae	Sapindales	eudicots	Streptophyta	Viridiplantae	265533993	75197
+7222_7223_DatePalm_E3	GCF_009389715.1_Phoenix_dactylifera.faa	DatePalm			42345	DatePalm		Phoenix dactylifera	Phoenix	Arecaceae	Arecales	monocots	Streptophyta	Viridiplantae	772315838	48800
+7224_7225_7226_7227_7228_Papaya_Exploris	GCF_000150535.2_Carica_papaya.faa	Papayas			3649	Papayas		Carica papaya	Carica	Caricaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	369781828	25953
+7229_Broccoli_E3	GCA_034640255.1_Brassica_oleracea_var_italica.helixer.faa	Broccoli		16	36774	Broccoli		Brassica oleracea var. italica	Brassica	Brassicaceae	Brassicales	eudicots	Streptophyta	Viridiplantae	557942728	56433
+6970_6971_Leek_E3	leek.helixer.faa	Leek		26	4681	Leek		Allium ampeloprasum	Allium	Amaryllidaceae	Asparagales	monocots	Streptophyta	Viridiplantae	16456457018	131681
+7125_Yautia_E3		Yautia		4	28478	Yautia		Xanthosoma sagittifolium	Xanthosoma	Araceae	Alismatales	monocots	Streptophyta	Viridiplantae		
+	GCF_003573695.1_Papaver_somniferum.faa	Poppy			3469	Poppy		Papaver somniferum	Papaver	Papaveraceae	Ranunculales	eudicots	Streptophyta	Viridiplantae	2715377404	84179

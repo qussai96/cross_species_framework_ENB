@@ -129,7 +129,8 @@ def build_matrix_fast(
     intensities_dir,
     tissue_ontology,
     metadata,
-    output,
+    output_raw,
+    output_maxlfq,
     protein_descriptions=None,
     og_desc_path=None,
     og_annotation_table=None,
@@ -230,88 +231,109 @@ def build_matrix_fast(
     tissue['p_norm'] = tissue['pNumber'].apply(normalize_pnumber)
     p_to_po = dict(zip(tissue['p_norm'], tissue['PO_1']))
 
-    # ---------- accumulate results ----------
-    chunks = []
+    def build_final_matrix(intensity_columns, matrix_label):
+        chunks = []
 
-    for fname in tqdm(os.listdir(intensities_dir), desc="Species"):
-        if not fname.endswith('.tsv'):
-            continue
-
-        species = fname.replace('.proteins.tsv', '').replace('.tsv', '')
-        ortho_col = species_map.get(species)
-        if not ortho_col:
-            continue
-
-        path = os.path.join(intensities_dir, fname)
-
-        for df in pd.read_csv(path, sep='\t', chunksize=200_000, low_memory=False):
-
-            if 'Protein ID' not in df.columns:
+        for fname in tqdm(os.listdir(intensities_dir), desc=f"Species ({matrix_label})"):
+            if not fname.endswith('.tsv'):
                 continue
 
-            # ---- proteins ----
-            prot = df[['Protein ID']].copy()
-            prot['Protein ID'] = prot['Protein ID'].astype(str)
+            species = fname.replace('.proteins.tsv', '').replace('.tsv', '')
+            ortho_col = species_map.get(species)
+            if not ortho_col:
+                continue
 
-            if 'Indistinguishable Proteins' in df.columns:
-                extra = df[['Indistinguishable Proteins']].dropna()
-                extra = extra.rename(columns={'Indistinguishable Proteins': 'Protein ID'})
-                prot = pd.concat([prot, extra])
+            path = os.path.join(intensities_dir, fname)
 
-            prot['Protein ID'] = prot['Protein ID'].str.replace(';', ',')
-            prot['Protein ID'] = prot['Protein ID'].str.split(',')
-            prot = prot.explode('Protein ID')
-            prot['Protein ID'] = prot['Protein ID'].str.strip()
+            for df in pd.read_csv(path, sep='\t', chunksize=200_000, low_memory=False):
 
-            # ---- intensities ----
-            int_cols = [c for c in df.columns if 'Intensity' in c]
-            vals = df[int_cols].copy()
-            vals['row_id'] = vals.index
+                if 'Protein ID' not in df.columns:
+                    continue
 
-            prot['row_id'] = prot.index
+                # ---- proteins ----
+                prot = df[['Protein ID']].copy()
+                prot['Protein ID'] = prot['Protein ID'].astype(str)
 
-            merged = (
-                prot
-                .merge(og_long, left_on='Protein ID', right_on='protein', how='inner')
-                .merge(vals, on='row_id', how='left')
-            )
+                if 'Indistinguishable Proteins' in df.columns:
+                    extra = df[['Indistinguishable Proteins']].dropna()
+                    extra = extra.rename(columns={'Indistinguishable Proteins': 'Protein ID'})
+                    prot = pd.concat([prot, extra])
 
-            melted = merged.melt(
-                id_vars='orthogroup_with_desc',
-                value_vars=int_cols,
-                var_name='p',
-                value_name='intensity'
-            )
+                prot['Protein ID'] = prot['Protein ID'].str.replace(';', ',')
+                prot['Protein ID'] = prot['Protein ID'].str.split(',')
+                prot = prot.explode('Protein ID')
+                prot['Protein ID'] = prot['Protein ID'].str.strip()
 
-            melted['p'] = (
-                melted['p']
-                .str.replace('MaxLFQ Intensity', '', regex=False)
-                .str.replace('Intensity', '', regex=False)
-                .str.strip()
-                .map(normalize_pnumber)
-            )
+                # ---- intensities ----
+                int_cols = intensity_columns(df.columns)
+                if not int_cols:
+                    continue
 
-            melted['PO'] = melted['p'].map(p_to_po)
-            melted = melted.dropna(subset=['PO', 'intensity'])
+                vals = df[int_cols].copy()
+                vals['row_id'] = vals.index
 
-            melted['col'] = ortho_col + "_" + melted['PO']
-            chunks.append(
-                melted.groupby(['orthogroup_with_desc', 'col'], as_index=False)['intensity'].sum()
-            )
+                prot['row_id'] = prot.index
 
-    logging.info("Final aggregation...")
-    final = pd.concat(chunks)
-    final = final.groupby(['orthogroup_with_desc', 'col'])['intensity'].sum().unstack(fill_value=0)
+                merged = (
+                    prot
+                    .merge(og_long, left_on='Protein ID', right_on='protein', how='inner')
+                    .merge(vals, on='row_id', how='left')
+                )
 
-    if og_desc_path and os.path.exists(og_desc_path):
-        og_desc = pd.read_csv(og_desc_path, sep='\t', dtype=str)
-        og_keep = set(og_desc['Orthogroup'].dropna())
-        if og_keep:
-            final = final.loc[[idx for idx in final.index if idx.split('|')[0] in og_keep]]
-        else:
-            logging.info("No orthogroups listed in description table; skipping matrix row filtering.")
+                melted = merged.melt(
+                    id_vars='orthogroup_with_desc',
+                    value_vars=int_cols,
+                    var_name='p',
+                    value_name='intensity'
+                )
 
-    final.to_csv(output, sep='\t')
+                melted['p'] = (
+                    melted['p']
+                    .str.replace('MaxLFQ Intensity', '', regex=False)
+                    .str.replace('Intensity', '', regex=False)
+                    .str.strip()
+                    .map(normalize_pnumber)
+                )
+
+                melted['PO'] = melted['p'].map(p_to_po)
+                melted = melted.dropna(subset=['PO', 'intensity'])
+
+                melted['col'] = ortho_col + "_" + melted['PO']
+                chunks.append(
+                    melted.groupby(['orthogroup_with_desc', 'col'], as_index=False)['intensity'].sum()
+                )
+
+        if not chunks:
+            logging.warning(f"No intensity values found for {matrix_label} matrix")
+            return pd.DataFrame()
+
+        logging.info(f"Final aggregation for {matrix_label} matrix...")
+        final = pd.concat(chunks)
+        final = final.groupby(['orthogroup_with_desc', 'col'])['intensity'].sum().unstack(fill_value=0)
+
+        if og_desc_path and os.path.exists(og_desc_path):
+            og_desc = pd.read_csv(og_desc_path, sep='\t', dtype=str)
+            og_keep = set(og_desc['Orthogroup'].dropna())
+            if og_keep:
+                final = final.loc[[idx for idx in final.index if idx.split('|')[0] in og_keep]]
+            else:
+                logging.info("No orthogroups listed in description table; skipping matrix row filtering.")
+
+        return final
+
+    raw_final = build_final_matrix(
+        lambda cols: [c for c in cols if c.endswith(' Intensity') and 'MaxLFQ Intensity' not in c],
+        matrix_label='raw intensities',
+    )
+    raw_final.to_csv(output_raw, sep='\t')
+    logging.info(f"Saved raw intensity matrix to: {output_raw}")
+
+    maxlfq_final = build_final_matrix(
+        lambda cols: [c for c in cols if 'MaxLFQ Intensity' in c],
+        matrix_label='MaxLFQ intensities',
+    )
+    maxlfq_final.to_csv(output_maxlfq, sep='\t')
+    logging.info(f"Saved MaxLFQ intensity matrix to: {output_maxlfq}")
     logging.info("DONE")
 
 
@@ -638,14 +660,18 @@ def main():
     if args.interproscan:
         protein_descriptions = parse_interproscan_with_fasta(args.interproscan, args.input_fasta)
     
-    og_desc_path = Path(args.output).parent / "OG_Desc.tsv"
+    output_dir = Path(args.output).parent
+    raw_output = output_dir / "protein_orthogroup_po_matrix_raw_intensities.csv"
+    maxlfq_output = output_dir / "protein_orthogroup_po_matrix_maxLFQ_intensities.csv"
+    og_desc_path = output_dir / "OG_Desc.tsv"
 
     build_matrix_fast(
         args.orthogroups,
         args.intensities,
         args.tissue_ontology,
         args.metadata,
-        args.output,
+        str(raw_output),
+        str(maxlfq_output),
         protein_descriptions=protein_descriptions,
         og_desc_path=str(og_desc_path),
         og_annotation_table=args.og_annotation_table,
@@ -677,7 +703,7 @@ def main():
     ogs_with_input_proteins = set(protein_to_og[p] for p in proteins_in_fasta if p in protein_to_og)
     
     # Load matrix to count orthogroups with values
-    matrix_df = pd.read_csv(args.output, sep='\t', index_col=0)
+    matrix_df = pd.read_csv(maxlfq_output, sep='\t', index_col=0)
     
     # Get the species name from input FASTA filename
     fasta_basename = Path(args.input_fasta).stem
@@ -694,7 +720,7 @@ def main():
         logging.warning(f"No columns found for species '{fasta_basename}' in the matrix")
     
     # Write statistics to file
-    stats_file = Path(args.output).parent / "stats.txt"
+    stats_file = output_dir / "stats.txt"
     with open(stats_file, 'w') as f:
         f.write(f"=== Statistics ===\n\n")
         f.write(f"Number of proteins in input FASTA: {num_proteins}\n")

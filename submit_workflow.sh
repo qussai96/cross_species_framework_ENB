@@ -111,13 +111,23 @@ python "\${PY_SCRIPTS_DIR}/protein_orthogroup_po_matrix.py" \
 echo "[STEP 4] Generating heatmaps and orthogroup summary outputs at $(date)"
 python "\${PY_SCRIPTS_DIR}/plot_heatmap.py" \
     --name "\${OUTPUT_NAME}" \
-    --protein_orthogroup_po_matrix "\${OUTPUT_DIR}/protein_orthogroup_po_matrix.csv" \
+    --protein_orthogroup_po_matrix "\${OUTPUT_DIR}/protein_orthogroup_po_matrix_maxLFQ_intensities.csv" \
     --orthogroups "\${OUTPUT_DIR}/Assigned_Orthogroups.tsv" \
     --input_fasta "\${OUTPUT_DIR}/${OUTPUT_NAME}_fasta/${OUTPUT_NAME}.faa" \
     --metadata "\${METADATA}" \
     --matched_orthogroups "\${OUTPUT_DIR}/Orthogroups_matched_to_${OUTPUT_NAME}.tsv" \
     --output_dir "\${OUTPUT_DIR}" \
     2>&1 | tee "\${OUTPUT_DIR}/logs/plot_heatmap.log"
+
+echo "[STEP 5] Generating plant-level heatmaps at $(date)"
+mkdir -p "\${OUTPUT_DIR}/plant_level"
+python "\${PY_SCRIPTS_DIR}/plot_plant_tissue_heatmap.py" \
+    --matrix "\${OUTPUT_DIR}/protein_orthogroup_po_matrix_maxLFQ_intensities.csv" \
+    --orthogroups "\${OUTPUT_DIR}/Assigned_Orthogroups.tsv" \
+    --tissue-ontology "\${TISSUE_ONTOLOGY}" \
+    --all-plants \
+    --output-dir "\${OUTPUT_DIR}/plant_level" \
+    2>&1 | tee "\${OUTPUT_DIR}/logs/plot_plant_tissue_heatmap.log"
 
 echo "DONE at $(date)"
 EOF
