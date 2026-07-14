@@ -1,0 +1,15 @@
+name: cross_species_framework_enb
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - pandas
+  - numpy
+  - matplotlib
+  - seaborn
+  - scipy
+  - plotly
+  - tqdm
+  - diamond
