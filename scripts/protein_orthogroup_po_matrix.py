@@ -33,6 +33,17 @@ def normalize_pnumber(s):
     return s
 
 
+def normalize_label_part(value):
+    if pd.isna(value) or value is None:
+        return "unknown_tissue"
+    text = str(value).strip()
+    if not text:
+        return "unknown_tissue"
+    text = re.sub(r'[^A-Za-z0-9:]+', '_', text)
+    text = re.sub(r'_+', '_', text).strip('_')
+    return text or "unknown_tissue"
+
+
 def parse_interproscan_with_fasta(interproscan_file, input_fasta):
     """
     Parse InterProScan TSV file and extract first valid description for each protein.
@@ -229,7 +240,10 @@ def build_matrix_fast(
     # ---------- tissue ontology ----------
     tissue = pd.read_csv(tissue_ontology, sep='\t', dtype=str)
     tissue['p_norm'] = tissue['pNumber'].apply(normalize_pnumber)
-    p_to_po = dict(zip(tissue['p_norm'], tissue['PO_1']))
+    tissue['PO_norm'] = tissue['PO_1'].fillna('PO:0000000').replace('', 'PO:0000000')
+    tissue['TissueName_norm'] = tissue['TissueName'].fillna('').replace('', 'unknown_tissue').map(normalize_label_part)
+    tissue['po_tissue_label'] = tissue['PO_norm'].astype(str) + '_' + tissue['TissueName_norm'].astype(str)
+    p_to_label = dict(zip(tissue['p_norm'], tissue['po_tissue_label']))
 
     def build_final_matrix(intensity_columns, matrix_label):
         chunks = []
@@ -295,12 +309,12 @@ def build_matrix_fast(
                     .map(normalize_pnumber)
                 )
 
-                melted['PO'] = melted['p'].map(p_to_po)
-                melted = melted.dropna(subset=['PO', 'intensity'])
+                melted['po_tissue_label'] = melted['p'].map(p_to_label)
+                melted = melted.dropna(subset=['po_tissue_label', 'intensity'])
 
-                melted['col'] = ortho_col + "_" + melted['PO']
+                melted['col'] = ortho_col + "_" + melted['po_tissue_label']
                 chunks.append(
-                    melted.groupby(['orthogroup_with_desc', 'col'], as_index=False)['intensity'].sum()
+                    melted.groupby(['orthogroup_with_desc', 'col'], as_index=False)['intensity'].max()
                 )
 
         if not chunks:
@@ -309,7 +323,7 @@ def build_matrix_fast(
 
         logging.info(f"Final aggregation for {matrix_label} matrix...")
         final = pd.concat(chunks)
-        final = final.groupby(['orthogroup_with_desc', 'col'])['intensity'].sum().unstack(fill_value=0)
+        final = final.groupby(['orthogroup_with_desc', 'col'])['intensity'].max().unstack(fill_value=0)
 
         if og_desc_path and os.path.exists(og_desc_path):
             og_desc = pd.read_csv(og_desc_path, sep='\t', dtype=str)
@@ -392,7 +406,7 @@ def generate_orthogroup_heatmap(matrix_file, orthogroups_file, input_fasta, outp
     # Collapse PO/tissue columns to median per plant
     species_cols = {}
     for col in df_filtered.columns:
-        species = col.split('_PO:')[0]
+        species = col.split('_PO:', 1)[0] if '_PO:' in col else col
         species_cols.setdefault(species, []).append(col)
 
     # Initialize median_df with plants as rows and orthogroups as columns
@@ -539,7 +553,7 @@ def generate_orthogroup_z_score_heatmap(matrix_file, orthogroups_file, input_fas
     # Collapse PO/tissue columns to median per species
     species_cols = {}
     for col in df_filtered.columns:
-        species = col.split("_PO:")[0]
+        species = col.split("_PO:", 1)[0] if "_PO:" in col else col
         species_cols.setdefault(species, []).append(col)
 
     # species_intensity: rows = orthogroups, cols = species

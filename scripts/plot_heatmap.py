@@ -14,6 +14,22 @@ from plotly import graph_objects as go
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 
+def split_matrix_column(col: str) -> tuple[str, str | None]:
+    if "_PO:" not in col:
+        return col, None
+    plant, suffix = col.split("_PO:", 1)
+    return plant, "PO:" + suffix
+
+
+def normalize_species_key(name: str) -> str:
+    s = str(name).strip()
+    for suffix in [".helixer.faa", ".helixer", ".faa", ".fasta"]:
+        if s.endswith(suffix):
+            s = s[: -len(suffix)]
+            break
+    return s
+
+
 def read_table_auto(path: str | Path, index_col=None) -> pd.DataFrame:
     return pd.read_csv(path, sep=None, engine="python", index_col=index_col, dtype=str if index_col is None else None)
 
@@ -37,7 +53,7 @@ def build_species_intensity(
     if "FASTA" not in meta.columns or "Name" not in meta.columns:
         raise ValueError("metadata must contain columns: FASTA, Name")
 
-    meta["ortho_col"] = meta["FASTA"].str.replace(r"\.(faa|fasta|helixer\.faa)$", "", regex=True)
+    meta["ortho_col"] = meta["FASTA"].map(normalize_species_key)
     ortho_to_name = dict(zip(meta["ortho_col"], meta["Name"]))
 
     df = pd.read_csv(matrix_file, sep=None, engine="python", index_col=0)
@@ -69,7 +85,7 @@ def build_species_intensity(
 
     species_cols: dict[str, list[str]] = {}
     for col in df_filtered.columns:
-        species = col.split("_PO:")[0]
+        species, _ = split_matrix_column(col)
         species_cols.setdefault(species, []).append(col)
 
     species_intensity = pd.DataFrame(index=df_filtered.index, columns=species_cols.keys(), dtype=float)
@@ -80,7 +96,9 @@ def build_species_intensity(
         species_median = species_median.where(~(species_median.isna() & has_zeros), 0)
         species_intensity[species] = species_median.values
 
-    species_intensity.columns = species_intensity.columns.map(lambda x: ortho_to_name.get(x, x))
+    species_intensity.columns = species_intensity.columns.map(
+        lambda x: ortho_to_name.get(normalize_species_key(x), x)
+    )
     species_intensity = species_intensity.dropna(axis=1, how="all")
     if species_intensity.empty:
         raise ValueError("No data left after collapsing to per-species medians")

@@ -43,6 +43,7 @@ PROTEIN_INTENSITIES="/home/students/q.abbas/Fetch_data/Proteomics/combined_prote
 METADATA="/home/students/q.abbas/Fetch_data/all_crops_metadata.tsv"
 TISSUE_ONTOLOGY="/home/students/q.abbas/+proj-q.abbas/Workflow_orthogroups/ENB_TissueOntology_long.tsv"
 OG_ANNOTATION_TABLE="/home/students/q.abbas/+proj-q.abbas/Workflow_orthogroups/Mapping_OG/OG_functional_annotation.tsv"
+PROBLEM_REPORT="/home/students/q.abbas/+proj-q.abbas/Workflow_orthogroups/cross_species_framework_ENB/ProblemReport.tsv"
 
 mkdir -p "\${OUTPUT_DIR}/${OUTPUT_NAME}_fasta" "\${OUTPUT_DIR}/logs"
 
@@ -105,7 +106,7 @@ python "\${PY_SCRIPTS_DIR}/protein_orthogroup_po_matrix.py" \
   --tissue-ontology "\${TISSUE_ONTOLOGY}" \
   --metadata "\${METADATA}" \
   --og-annotation-table "\${OG_ANNOTATION_TABLE}" \
-  --output "\${OUTPUT_DIR}/protein_orthogroup_po_matrix.csv" \
+    --output "\${OUTPUT_DIR}/protein_orthogroup_po_matrix_maxLFQ_intensities.csv" \
   2>&1 | tee "\${OUTPUT_DIR}/logs/orthogroup_po_matrix.log"
 
 echo "[STEP 4] Generating heatmaps and orthogroup summary outputs at $(date)"
@@ -125,6 +126,8 @@ python "\${PY_SCRIPTS_DIR}/plot_plant_tissue_heatmap.py" \
     --matrix "\${OUTPUT_DIR}/protein_orthogroup_po_matrix_maxLFQ_intensities.csv" \
     --orthogroups "\${OUTPUT_DIR}/Assigned_Orthogroups.tsv" \
     --tissue-ontology "\${TISSUE_ONTOLOGY}" \
+    --metadata "\${METADATA}" \
+    --problem-report "\${PROBLEM_REPORT}" \
     --all-plants \
     --output-dir "\${OUTPUT_DIR}/plant_level" \
     2>&1 | tee "\${OUTPUT_DIR}/logs/plot_plant_tissue_heatmap.log"

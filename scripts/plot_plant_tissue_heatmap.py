@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
+
+
+def split_matrix_column(col: str) -> tuple[str, str | None, str | None]:
+    if "_PO:" not in col:
+        return col, None, None
+    plant, suffix = col.split("_PO:", 1)
+    if "_" not in suffix:
+        return plant, f"PO:{suffix}", None
+    po, tissue = suffix.split("_", 1)
+    return plant, f"PO:{po}", tissue
 
 
 def read_table_auto(path: str | Path) -> pd.DataFrame:
@@ -59,9 +70,9 @@ def matrix_plants(matrix_df: pd.DataFrame, og_col: str) -> Dict[str, List[str]]:
     for col in matrix_df.columns:
         if col == og_col:
             continue
-        if "_PO:" not in col:
+        plant_key, _, _ = split_matrix_column(col)
+        if plant_key == col:
             continue
-        plant_key = col.split("_PO:", 1)[0]
         plants.setdefault(plant_key, []).append(col)
     return plants
 
@@ -159,6 +170,116 @@ def tissue_name_map(tissue_ontology: str | None) -> Dict[str, str]:
     return out
 
 
+def read_plant_name_map(metadata_path: str | None) -> Dict[str, str]:
+    if not metadata_path:
+        return {}
+
+    meta = pd.read_csv(metadata_path, sep="\t", dtype=str)
+    required_cols = {"FASTA", "Name"}
+    if not required_cols.issubset(meta.columns):
+        raise ValueError(f"Metadata TSV must contain columns {sorted(required_cols)}")
+
+    out: Dict[str, str] = {}
+    for _, row in meta[["FASTA", "Name"]].dropna().iterrows():
+        fasta = normalize_species_col(str(row["FASTA"]))
+        name = str(row["Name"]).strip()
+        if fasta and name:
+            out[fasta] = name
+    return out
+
+
+def safe_filename(text: str) -> str:
+    value = str(text).strip()
+    value = re.sub(r"[\s/\\]+", "_", value)
+    value = re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+    value = value.strip("._-")
+    return value or "output"
+
+
+def _norm_text(s: str) -> str:
+    return " ".join(str(s).replace("_", " ").strip().lower().split())
+
+
+def build_outlier_tissue_keys(
+    problem_report_path: str | None,
+    tissue_ontology_path: str | None,
+) -> Set[Tuple[str, str, str]]:
+    if not problem_report_path or not tissue_ontology_path:
+        return set()
+
+    pr = pd.read_csv(problem_report_path, sep="\t", dtype=str)
+    if pr.empty:
+        return set()
+
+    outlier_col_candidates = [c for c in pr.columns if c.strip().lower() in {"outlier", "oulier"}]
+    plant_col_candidates = [c for c in pr.columns if c.strip().lower() == "plant"]
+    tissue_col_candidates = [c for c in pr.columns if c.strip().lower() == "tissue"]
+    if not outlier_col_candidates or not tissue_col_candidates:
+        return set()
+
+    outlier_col = outlier_col_candidates[0]
+    plant_col = plant_col_candidates[0] if plant_col_candidates else None
+    tissue_col = tissue_col_candidates[0]
+
+    outlier_rows = pr[pr[outlier_col].astype(str).str.strip() == "1"]
+    if outlier_rows.empty:
+        return set()
+
+    outlier_pnumbers = {
+        str(v).strip()
+        for v in outlier_rows[tissue_col].dropna().tolist()
+        if str(v).strip()
+    }
+    if not outlier_pnumbers:
+        return set()
+
+    allowed_plants_by_pnumber: Dict[str, Set[str]] = {}
+    if plant_col:
+        for _, row in outlier_rows[[plant_col, tissue_col]].dropna(subset=[tissue_col]).iterrows():
+            pn = str(row[tissue_col]).strip()
+            if not pn:
+                continue
+            plant_raw = row.get(plant_col)
+            if pd.isna(plant_raw):
+                continue
+            plant_norm = _norm_text(str(plant_raw))
+            if not plant_norm:
+                continue
+            allowed_plants_by_pnumber.setdefault(pn, set()).add(plant_norm)
+
+    ont = pd.read_csv(tissue_ontology_path, sep="\t", dtype=str)
+    if ont.empty or "pNumber" not in ont.columns:
+        return set()
+
+    outlier_keys: Set[Tuple[str, str, str]] = set()
+    ont_hits = ont[ont["pNumber"].astype(str).str.strip().isin(outlier_pnumbers)]
+
+    for _, row in ont_hits.iterrows():
+        pnum = str(row.get("pNumber", "")).strip()
+        ont_plant_norm = _norm_text(str(row.get("PlantName", "")))
+        allowed_plants = allowed_plants_by_pnumber.get(pnum)
+        if allowed_plants and ont_plant_norm and ont_plant_norm not in allowed_plants:
+            continue
+
+        po_raw = row.get("PO_1")
+        tissue_raw = row.get("TissueName")
+        if pd.notna(po_raw) and pd.notna(tissue_raw):
+            po = str(po_raw).strip()
+            tissue_name = str(tissue_raw).strip()
+            if po and tissue_name and not po.lower().startswith("no appropriate"):
+                outlier_keys.add((ont_plant_norm, po, _norm_text(tissue_name)))
+
+        # Fallback for datasets where column labels are PO-term based.
+        term_raw = row.get("PO_term_1")
+        if pd.notna(po_raw) and pd.notna(term_raw):
+            po = str(po_raw).strip()
+            term = str(term_raw).strip()
+            if po and term and not po.lower().startswith("no appropriate"):
+                outlier_keys.add((ont_plant_norm, po, _norm_text(term)))
+
+    return outlier_keys
+
+
 def build_heatmap_table(
     matrix_df: pd.DataFrame,
     matrix_og_col: str,
@@ -234,8 +355,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Plot tissue heatmap for proteins detected in one selected plant."
     )
-    parser.add_argument("--matrix", required=True, help="protein_orthogroup_po_matrix.csv path")
+    parser.add_argument("--matrix", required=True, help="orthogroup matrix TSV path")
     parser.add_argument("--orthogroups", required=True, help="Assigned_Orthogroups.tsv path")
+    parser.add_argument(
+        "--metadata",
+        default=None,
+        help="Optional metadata TSV with FASTA and Name columns for output filename labels",
+    )
     parser.add_argument("--plant", default=None, help="Plant key/name to select (optional interactive selection)")
     parser.add_argument(
         "--all-plants",
@@ -246,6 +372,11 @@ def parse_args() -> argparse.Namespace:
         "--tissue-ontology",
         default=None,
         help="Optional tissue ontology TSV for mapping PO IDs to readable tissue names",
+    )
+    parser.add_argument(
+        "--problem-report",
+        default=None,
+        help="Optional ProblemReport TSV (outlier tissues with Outlier/Oulier and Tissue columns)",
     )
     parser.add_argument(
         "--output-png",
@@ -293,14 +424,18 @@ def render_plant(
     plant_cols: List[str],
     plant_protein_col: str,
     tissue_ontology_path: str | None,
+    outlier_tissue_keys: Set[Tuple[str, str, str]],
     matrix_dir: Path,
     output_dir: Path | None,
     output_png: str | None,
     output_tsv: str | None,
+    plant_display_name: str | None,
     max_rows: int,
     figscale: float,
     max_label_len: int,
 ) -> None:
+    plant_norm = _norm_text(plant_display_name or plant_key)
+
     table = build_heatmap_table(
         matrix_df=matrix_df,
         matrix_og_col=matrix_og_col,
@@ -314,82 +449,154 @@ def render_plant(
     if max_rows > 0 and len(table) > max_rows:
         table = table.iloc[: max_rows].copy()
 
-    po_to_name = tissue_name_map(tissue_ontology_path)
     pretty_cols = []
+    outlier_col_indices = set()
     for col in plant_cols:
-        po_raw = col.split("_PO:", 1)[1] if "_PO:" in col else col
-        po_key = po_raw if str(po_raw).startswith("PO:") else f"PO:{po_raw}"
-        tissue = po_to_name.get(po_key, po_to_name.get(po_raw, po_raw))
-        pretty_cols.append(tissue)
+        col_idx = len(pretty_cols)
+        _, po_id, tissue_name = split_matrix_column(col)
+        if po_id and tissue_name:
+            pretty_cols.append(f"{po_id} {tissue_name.replace('_', ' ')}")
+            if (plant_norm, po_id, _norm_text(tissue_name)) in outlier_tissue_keys:
+                outlier_col_indices.add(col_idx)
+        elif po_id:
+            pretty_cols.append(po_id)
+        else:
+            pretty_cols.append(col.replace("_", " "))
 
     plot_table = table.copy()
     plot_table.columns = pretty_cols
 
-    safe_plant = plant_key.replace("/", "_")
+    display_name = plant_display_name or plant_key
+    safe_plant = safe_filename(display_name)
     base_dir = output_dir if output_dir else matrix_dir
     base_dir.mkdir(parents=True, exist_ok=True)
-    out_png = Path(output_png) if output_png else base_dir / f"{safe_plant}_plant_tissues_heatmap.png"
-    out_tsv = Path(output_tsv) if output_tsv else base_dir / f"{safe_plant}_plant_tissues_intensities.tsv"
-    raw_out_png = base_dir / f"{safe_plant}_plant_tissues_raw_heatmap.png"
+    out_png = Path(output_png) if output_png else base_dir / f"{safe_plant}.png"
+    out_tsv = Path(output_tsv) if output_tsv else base_dir / f"{safe_plant}_plant_tissues_maxlfq_no_edits.tsv"
+
+    out_png_q1_q3 = out_png.with_name(f"{safe_plant}_q1_q3_capped{out_png.suffix}")
+    out_png_row_minmax = out_png.with_name(
+        f"{safe_plant}_min_max{out_png.suffix}"
+    )
+    out_png_orthogroup_collapsed = out_png.with_name(
+        f"{safe_plant}_collapsed{out_png.suffix}"
+    )
 
     table.to_csv(out_tsv, sep="\t")
 
-    display_vals = np.log10(plot_table + 1.0)
-    row_min = display_vals.min(axis=1)
-    row_max = display_vals.max(axis=1)
-    row_range = (row_max - row_min).replace(0, np.nan)
-    display_vals = display_vals.sub(row_min, axis=0).div(row_range, axis=0)
-    display_vals = display_vals.fillna(0.0)
-    display_vals.index = [compact_label(v, max_len=max_label_len) for v in display_vals.index]
+    def save_heatmap(
+        data: pd.DataFrame,
+        output_path: Path,
+        title: str,
+        cbar_label: str,
+        *,
+        cmap: str = "OrRd",
+        vmin: float | None = None,
+        vmax: float | None = None,
+    ) -> None:
+        plot_data = data.copy()
+        plot_data.index = [compact_label(v, max_len=max_label_len) for v in plot_data.index]
 
-    width = max(14, len(plot_table.columns) * 0.7 + 6)
-    height = max(8, len(plot_table.index) * max(figscale, 0.22) + 2)
+        width = max(14, len(plot_data.columns) * 0.7 + 6)
+        height = max(8, len(plot_data.index) * max(figscale, 0.22) + 2)
 
-    plt.figure(figsize=(width, height))
+        plt.figure(figsize=(width, height))
+        ax = sns.heatmap(
+            plot_data,
+            cmap=cmap,
+            cbar_kws={"label": cbar_label},
+            vmin=vmin,
+            vmax=vmax,
+        )
+        plt.title(title)
+        plt.xlabel("Tissues")
+        plt.ylabel("Proteins")
+        plt.xticks(rotation=90, ha="center", fontsize=9)
+        plt.yticks(fontsize=8)
+        for idx, tick in enumerate(ax.get_xticklabels()):
+            if idx in outlier_col_indices:
+                tick.set_color("blue")
+                tick.set_fontweight("bold")
+        ax.tick_params(axis="y", pad=2)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=200)
+        plt.close()
 
-    ax = sns.heatmap(
-        display_vals,
-        cmap='OrRd',
+    # 1) Same as current behavior.
+    display_current = np.log10(plot_table.mask(plot_table <= 0))
+    save_heatmap(
+        data=display_current,
+        output_path=out_png,
+        title=f"Plant Tissue log10 Intensities: {plant_key}\n(y = search_protein_id / plant_protein_id / orthogroup)",
+        cbar_label="log10(intensity)",
+        cmap="OrRd",
+    )
+
+    # 2) log10(maxLFQ+1) with color scale capped at Q1..Q3.
+    display_log_plus1 = np.log10(plot_table + 1.0)
+    finite_vals = display_log_plus1.to_numpy().ravel()
+    finite_vals = finite_vals[np.isfinite(finite_vals)]
+    q1 = float(np.quantile(finite_vals, 0.25))
+    q3 = float(np.quantile(finite_vals, 0.75))
+    if q1 == q3:
+        q3 = q1 + 1e-9
+    display_log_plus1_capped = display_log_plus1.clip(lower=q1, upper=q3)
+    # save_heatmap(
+    #     data=display_log_plus1_capped,
+    #     output_path=out_png_q1_q3,
+    #     title=(
+    #         f"Plant Tissue log10(MaxLFQ+1), capped to Q1-Q3: {plant_key}\\n"
+    #         f"(Q1={q1:.3f}, Q3={q3:.3f}; y = search_protein_id / plant_protein_id / orthogroup)"
+    #     ),
+    #     cbar_label="log10(MaxLFQ+1)",
+    #     cmap="OrRd",
+    #     vmin=q1,
+    #     vmax=q3,
+    # )
+
+    # 3) Row-wise min-max scaling (per protein/orthogroup label) on log10(maxLFQ+1).
+    row_mins = display_log_plus1.min(axis=1)
+    row_maxs = display_log_plus1.max(axis=1)
+    row_ranges = (row_maxs - row_mins).replace(0, np.nan)
+    display_row_minmax = display_log_plus1.sub(row_mins, axis=0).div(row_ranges, axis=0).fillna(0.0)
+    save_heatmap(
+        data=display_row_minmax,
+        output_path=out_png_row_minmax,
+        title=f"Plant Tissue Row Min-Max on log10(MaxLFQ+1): {plant_key}\\n(y = search_protein_id / plant_protein_id / orthogroup)",
+        cbar_label="row min-max (0-1)",
+        cmap="OrRd",
         vmin=0.0,
         vmax=1.0,
-        cbar_kws={"label": "Normalized intensity (0-1)"},
     )
-    plt.title(f"Plant Tissue Heatmap: {plant_key}\n(y = search_protein_id / plant_protein_id / orthogroup)")
-    plt.xlabel("Tissues")
-    plt.ylabel("Proteins")
-    plt.xticks(rotation=90, ha="center", fontsize=9)
-    plt.yticks(fontsize=8)
-    ax.tick_params(axis="y", pad=2)
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=200)
-    plt.close()
 
-    raw_width = max(14, len(table.columns) * 0.7 + 6)
-    raw_height = max(8, len(table.index) * max(figscale, 0.22) + 2)
-
-    plt.figure(figsize=(raw_width, raw_height))
-    raw_ax = sns.heatmap(
-        table,
-        cmap='OrRd',
-        cbar_kws={"label": "Intensity"},
+    # 4) Collapse by removing identical rows within each orthogroup (no max aggregation).
+    orthogroup_labels = table.index.to_series().astype(str).str.rsplit(" / ", n=1).str[-1]
+    collapsed = plot_table.copy()
+    collapsed["_orthogroup"] = orthogroup_labels.values
+    collapsed = collapsed.drop_duplicates(subset=["_orthogroup"] + list(plot_table.columns))
+    collapsed = collapsed.set_index("_orthogroup")
+    collapsed["_total_intensity"] = collapsed.sum(axis=1)
+    collapsed = collapsed.sort_values(by="_total_intensity", ascending=False).drop(columns=["_total_intensity"])
+    display_collapsed = np.log10(collapsed.mask(collapsed <= 0))
+    save_heatmap(
+        data=display_collapsed,
+        output_path=out_png_orthogroup_collapsed,
+        title=f"Plant Tissue log10 Intensities, orthogroup deduplicated: {plant_key}\n(y = orthogroup)",
+        cbar_label="log10(intensity)",
+        cmap="OrRd",
     )
-    plt.title(f"Plant Tissue Raw Intensities: {plant_key}\n(y = search_protein_id / plant_protein_id / orthogroup)")
-    plt.xlabel("Tissues")
-    plt.ylabel("Proteins")
-    plt.xticks(rotation=90, ha="center", fontsize=9)
-    plt.yticks(fontsize=8)
-    raw_ax.tick_params(axis="y", pad=2)
-    plt.tight_layout()
-    plt.savefig(raw_out_png, dpi=200)
-    plt.close()
 
-    print(f"Plant selected: {plant_key}")
+    if display_name != plant_key:
+        print(f"Plant selected: {display_name} ({plant_key})")
+    else:
+        print(f"Plant selected: {plant_key}")
     print(f"Orthogroup plant column: {plant_protein_col}")
     print(f"Rows plotted: {len(plot_table)}")
     print(f"Tissues: {len(plot_table.columns)}")
-    print(f"Saved table: {out_tsv}")
-    print(f"Saved heatmap: {out_png}")
-    print(f"Saved raw heatmap: {raw_out_png}")
+    print(f"Saved raw maxLFQ table (no edits): {out_tsv}")
+    print(f"Saved heatmap (current): {out_png}")
+    print(f"Saved heatmap (Q1-Q3 capped): {out_png_q1_q3}")
+    print(f"Saved heatmap (row min-max): {out_png_row_minmax}")
+    print(f"Saved heatmap (orthogroup-collapsed): {out_png_orthogroup_collapsed}")
 
 
 def main() -> None:
@@ -401,12 +608,21 @@ def main() -> None:
         if default_tissue_ontology.exists():
             tissue_ontology_path = str(default_tissue_ontology)
 
+    problem_report_path = args.problem_report
+    if not problem_report_path:
+        default_problem_report = Path(__file__).resolve().parents[1] / "ProblemReport.tsv"
+        if default_problem_report.exists():
+            problem_report_path = str(default_problem_report)
+
+    outlier_tissue_keys = build_outlier_tissue_keys(problem_report_path, tissue_ontology_path)
+    plant_name_map = read_plant_name_map(args.metadata) if args.metadata else {}
+
     matrix_df = read_table_auto(args.matrix)
     matrix_og_col = get_matrix_orthogroup_col(matrix_df)
 
     plants = matrix_plants(matrix_df, matrix_og_col)
     if not plants:
-        raise ValueError("No plant tissue columns found in matrix (expected '<plant>_PO:<id>' columns).")
+        raise ValueError("No plant tissue columns found in matrix (expected '<plant>_PO:<id>_<tissue>' columns).")
 
     plant_keys = sorted(plants.keys())
 
@@ -419,6 +635,7 @@ def main() -> None:
         failures = []
         for plant_key in plant_keys:
             plant_cols = plants[plant_key]
+            plant_display_name = plant_name_map.get(normalize_species_col(plant_key), plant_key)
             try:
                 plant_protein_col = find_plant_protein_column(orth_df, plant_key)
                 render_plant(
@@ -430,10 +647,12 @@ def main() -> None:
                     plant_cols=plant_cols,
                     plant_protein_col=plant_protein_col,
                     tissue_ontology_path=tissue_ontology_path,
+                    outlier_tissue_keys=outlier_tissue_keys,
                     matrix_dir=matrix_dir,
                     output_dir=output_dir,
                     output_png=None,
                     output_tsv=None,
+                    plant_display_name=plant_display_name,
                     max_rows=args.max_rows,
                     figscale=args.figscale,
                     max_label_len=args.max_label_len,
@@ -448,6 +667,7 @@ def main() -> None:
     plant_key = resolve_plant_key(args.plant, plant_keys) if args.plant else choose_plant_interactive(plant_keys)
     plant_cols = plants[plant_key]
     plant_protein_col = find_plant_protein_column(orth_df, plant_key)
+    plant_display_name = plant_name_map.get(normalize_species_col(plant_key), plant_key)
     render_plant(
         matrix_df=matrix_df,
         matrix_og_col=matrix_og_col,
@@ -457,10 +677,12 @@ def main() -> None:
         plant_cols=plant_cols,
         plant_protein_col=plant_protein_col,
         tissue_ontology_path=tissue_ontology_path,
+        outlier_tissue_keys=outlier_tissue_keys,
         matrix_dir=matrix_dir,
         output_dir=output_dir,
         output_png=args.output_png,
         output_tsv=args.output_tsv,
+        plant_display_name=plant_display_name,
         max_rows=args.max_rows,
         figscale=args.figscale,
         max_label_len=args.max_label_len,
