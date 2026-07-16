@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+#edit fasta header, keep everyting before first space
+
 import sys
 
 def process_fasta(input_fasta, output_faa):
