@@ -14,6 +14,22 @@ from plotly import graph_objects as go
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 
+def split_matrix_column(col: str) -> tuple[str, str | None]:
+    if "_PO:" not in col:
+        return col, None
+    plant, suffix = col.split("_PO:", 1)
+    return plant, "PO:" + suffix
+
+
+def normalize_species_key(name: str) -> str:
+    s = str(name).strip()
+    for suffix in [".helixer.faa", ".helixer", ".faa", ".fasta"]:
+        if s.endswith(suffix):
+            s = s[: -len(suffix)]
+            break
+    return s
+
+
 def read_table_auto(path: str | Path, index_col=None) -> pd.DataFrame:
     return pd.read_csv(path, sep=None, engine="python", index_col=index_col, dtype=str if index_col is None else None)
 
@@ -27,6 +43,67 @@ def parse_fasta_headers(input_fasta: str | Path) -> set[str]:
     return proteins
 
 
+def build_species_orthogroup_protein_map(
+    orthogroups_file: str | Path,
+    metadata_file: str | Path,
+) -> dict[tuple[str, str], list[str]]:
+    meta = read_table_auto(metadata_file)
+    if "FASTA" not in meta.columns or "Name" not in meta.columns:
+        raise ValueError("metadata must contain columns: FASTA, Name")
+
+    meta["ortho_col"] = meta["FASTA"].map(normalize_species_key)
+    ortho_to_name = dict(zip(meta["ortho_col"], meta["Name"]))
+
+    og = read_table_auto(orthogroups_file)
+    if "Orthogroup" not in og.columns:
+        raise ValueError("orthogroups table must contain Orthogroup column")
+
+    species_og_to_proteins: dict[tuple[str, str], list[str]] = {}
+    for _, row in og.iterrows():
+        og_id = row["Orthogroup"]
+        for col in og.columns[1:]:
+            cell = row[col]
+            if pd.isna(cell):
+                continue
+
+            proteins = [p.strip() for p in str(cell).split(",") if p.strip()]
+            if not proteins:
+                continue
+
+            species_name = ortho_to_name.get(normalize_species_key(col), col)
+            key = (species_name, og_id)
+            species_og_to_proteins.setdefault(key, []).extend(proteins)
+
+    for key, proteins in species_og_to_proteins.items():
+        species_og_to_proteins[key] = list(dict.fromkeys(proteins))
+
+    return species_og_to_proteins
+
+
+def load_orthogroup_description_map(og_desc_file: str | Path) -> dict[str, str]:
+    path = Path(og_desc_file)
+    if not path.exists():
+        return {}
+
+    df = read_table_auto(path)
+    if df.empty:
+        return {}
+
+    if "Orthogroup" not in df.columns:
+        df = df.rename(columns={df.columns[0]: "Orthogroup"})
+
+    if "Description" not in df.columns:
+        remaining = [c for c in df.columns if c != "Orthogroup"]
+        if not remaining:
+            return {}
+        df = df.rename(columns={remaining[0]: "Description"})
+
+    return {
+        str(row["Orthogroup"]).strip(): str(row["Description"]).strip()
+        for _, row in df[["Orthogroup", "Description"]].dropna(subset=["Orthogroup"]).iterrows()
+    }
+
+
 def build_species_intensity(
     matrix_file: str | Path,
     orthogroups_file: str | Path,
@@ -37,7 +114,7 @@ def build_species_intensity(
     if "FASTA" not in meta.columns or "Name" not in meta.columns:
         raise ValueError("metadata must contain columns: FASTA, Name")
 
-    meta["ortho_col"] = meta["FASTA"].str.replace(r"\.(faa|fasta|helixer\.faa)$", "", regex=True)
+    meta["ortho_col"] = meta["FASTA"].map(normalize_species_key)
     ortho_to_name = dict(zip(meta["ortho_col"], meta["Name"]))
 
     df = pd.read_csv(matrix_file, sep=None, engine="python", index_col=0)
@@ -69,7 +146,7 @@ def build_species_intensity(
 
     species_cols: dict[str, list[str]] = {}
     for col in df_filtered.columns:
-        species = col.split("_PO:")[0]
+        species, _ = split_matrix_column(col)
         species_cols.setdefault(species, []).append(col)
 
     species_intensity = pd.DataFrame(index=df_filtered.index, columns=species_cols.keys(), dtype=float)
@@ -80,7 +157,9 @@ def build_species_intensity(
         species_median = species_median.where(~(species_median.isna() & has_zeros), 0)
         species_intensity[species] = species_median.values
 
-    species_intensity.columns = species_intensity.columns.map(lambda x: ortho_to_name.get(x, x))
+    species_intensity.columns = species_intensity.columns.map(
+        lambda x: ortho_to_name.get(normalize_species_key(x), x)
+    )
     species_intensity = species_intensity.dropna(axis=1, how="all")
     if species_intensity.empty:
         raise ValueError("No data left after collapsing to per-species medians")
@@ -129,8 +208,10 @@ def save_static_zscore_heatmap(
     cmap = LinearSegmentedColormap.from_list("blue_white_red", ["#0000FF", "#FFFFFF", "#FF0000"], N=100)
     cmap.set_bad(color="white")
 
-    if plot_data.shape[0] < 2:
-        plt.figure(figsize=(max(4, 0.3 * plot_data.shape[1]), max(4, 0.5 * plot_data.shape[0])))
+    if plot_data.shape[0] < 2 or plot_data.shape[1] < 2:
+        fig_w = max(8, min(20, 0.9 * plot_data.shape[1] + 4))
+        fig_h = max(5, min(20, 0.45 * plot_data.shape[0] + 2))
+        plt.figure(figsize=(fig_w, fig_h))
         ax = sns.heatmap(
             cluster_data,
             mask=mask,
@@ -146,12 +227,12 @@ def save_static_zscore_heatmap(
         ax.set_xlabel("Orthogroups")
         plt.subplots_adjust(bottom=0.35)
         plt.title(f"{title}\n({plot_data.shape[0]} Species, {plot_data.shape[1]} Orthogroups)")
-        plt.savefig(output_file, dpi=150)
+        plt.savefig(output_file, dpi=150, bbox_inches="tight")
         plt.close()
         return
 
-    width = min(20, 0.5 * plot_data.shape[1])
-    height = max(6, 0.35 * plot_data.shape[0])
+    width = max(10, min(24, 0.9 * plot_data.shape[1] + 4))
+    height = max(6, min(24, 0.35 * plot_data.shape[0] + 2))
 
     g = sns.clustermap(
         cluster_data,
@@ -184,16 +265,44 @@ def save_static_zscore_heatmap(
     plt.close()
 
 
-def save_interactive_zscore_heatmap(species_intensity: pd.DataFrame, output_file: str | Path, title: str) -> None:
+def save_interactive_zscore_heatmap(
+    species_intensity: pd.DataFrame,
+    output_file: str | Path,
+    title: str,
+    species_og_to_proteins: dict[tuple[str, str], list[str]] | None = None,
+    og_to_description: dict[str, str] | None = None,
+    og_to_search_ids: dict[str, list[str]] | None = None,
+) -> None:
+    if species_og_to_proteins is None:
+        species_og_to_proteins = {}
+    if og_to_description is None:
+        og_to_description = {}
+    if og_to_search_ids is None:
+        og_to_search_ids = {}
+
+    def format_proteins(proteins: list[str], max_show: int = 20) -> str:
+        if not proteins:
+            return "None"
+        if len(proteins) <= max_show:
+            return ", ".join(proteins)
+        shown = ", ".join(proteins[:max_show])
+        return f"{shown}, ... (+{len(proteins) - max_show} more)"
+
     z_df = compute_rowwise_z(species_intensity, treat_zero_as_missing=True)
     plot_data = z_df.T
     cluster_data = plot_data.fillna(0)
 
-    row_linkage = linkage(cluster_data, method="ward", metric="euclidean")
-    row_order = dendrogram(row_linkage, no_plot=True)["leaves"]
+    if cluster_data.shape[0] < 2:
+        row_order = list(range(cluster_data.shape[0]))
+    else:
+        row_linkage = linkage(cluster_data, method="ward", metric="euclidean")
+        row_order = dendrogram(row_linkage, no_plot=True)["leaves"]
 
-    col_linkage = linkage(cluster_data.T, method="ward", metric="euclidean")
-    col_order = dendrogram(col_linkage, no_plot=True)["leaves"]
+    if cluster_data.shape[1] < 2:
+        col_order = list(range(cluster_data.shape[1]))
+    else:
+        col_linkage = linkage(cluster_data.T, method="ward", metric="euclidean")
+        col_order = dendrogram(col_linkage, no_plot=True)["leaves"]
 
     clustered = plot_data.iloc[row_order, col_order]
     og_labels = [c.split("|")[0] if "|" in c else c for c in clustered.columns]
@@ -204,10 +313,26 @@ def save_interactive_zscore_heatmap(species_intensity: pd.DataFrame, output_file
         for og in clustered.columns:
             z_val = clustered.loc[species, og]
             base_og = og.split("|")[0] if "|" in og else og
+            fallback_desc = orthogroup_parts(og)[1]
+            description = og_to_description.get(base_og, fallback_desc) or "N/A"
+            proteins = species_og_to_proteins.get((species, base_og), [])
+            proteins_text = format_proteins(proteins)
+            search_ids = og_to_search_ids.get(base_og, [])
+            search_id_text = format_proteins(search_ids)
             if pd.isna(z_val):
-                row_hover.append(f"Species: {species}<br>Orthogroup: {base_og}<br>Z-score: Missing or undetected")
+                row_hover.append(
+                    f"Species: {species}<br>Orthogroup: {base_og}<br>Description: {description}"
+                    f"<br>Z-score: Missing or undetected"
+                    f"<br>search_id: {search_id_text}"
+                    f"<br>Proteins: {proteins_text}"
+                )
             else:
-                row_hover.append(f"Species: {species}<br>Orthogroup: {base_og}<br>Z-score: {z_val:.2f}")
+                row_hover.append(
+                    f"Species: {species}<br>Orthogroup: {base_og}<br>Description: {description}"
+                    f"<br>Z-score: {z_val:.2f}"
+                    f"<br>search_id: {search_id_text}"
+                    f"<br>Proteins: {proteins_text}"
+                )
         hover_text.append(row_hover)
 
     fig = go.Figure(
@@ -265,6 +390,19 @@ def load_search_protein_map(matched_file: str | Path) -> pd.DataFrame:
         second = [c for c in df.columns if c != "Orthogroup"][0]
         df = df.rename(columns={second: "search_protein_id"})
     return df[["Orthogroup", "search_protein_id"]].drop_duplicates()
+
+
+def build_orthogroup_search_id_map(search_protein_df: pd.DataFrame) -> dict[str, list[str]]:
+    grouped = (
+        search_protein_df.assign(
+            Orthogroup=search_protein_df["Orthogroup"].astype(str).str.strip(),
+            search_protein_id=search_protein_df["search_protein_id"].astype(str).str.strip(),
+        )
+        .loc[lambda d: d["Orthogroup"].ne("") & d["search_protein_id"].ne("")]
+        .groupby("Orthogroup", sort=False)["search_protein_id"]
+        .apply(lambda s: list(dict.fromkeys(s.tolist())))
+    )
+    return grouped.to_dict()
 
 
 def save_broadly_shared_tables(
@@ -452,6 +590,11 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Orthogroups matched table (e.g., Orthogroups_matched_to_Hormones_full_list.tsv)",
     )
+    parser.add_argument(
+        "--og_desc",
+        default=None,
+        help="Optional OG description table (defaults to <output_dir>/OG_Desc.tsv if present)",
+    )
     parser.add_argument("--output_dir", default=None, help="Output directory; defaults to matrix parent folder")
     parser.add_argument("--min_species_presence", type=int, default=2, help="Minimum species presence for z-score heatmap")
     return parser.parse_args()
@@ -474,19 +617,30 @@ def main() -> None:
     species_intensity.to_csv(out_dir / "heatmap_original_values.tsv", sep="\t")
 
     title = f"Protein Orthogroups Expression Across Plants - {args.name}"
+    species_og_to_proteins = build_species_orthogroup_protein_map(
+        orthogroups_file=args.orthogroups,
+        metadata_file=args.metadata,
+    )
+    search_protein_df = load_search_protein_map(args.matched_orthogroups)
+    og_to_search_ids = build_orthogroup_search_id_map(search_protein_df)
+    og_desc_path = Path(args.og_desc) if args.og_desc else out_dir / "OG_Desc.tsv"
+    og_to_description = load_orthogroup_description_map(og_desc_path)
+
     save_static_zscore_heatmap(
         species_intensity=species_intensity,
-        output_file=out_dir / "heatmap_z_score.png",
+        output_file=out_dir / "heatmap_z_score_median_across_tissues.png",
         title=title,
         min_species_presence=args.min_species_presence,
     )
     save_interactive_zscore_heatmap(
         species_intensity=species_intensity,
-        output_file=out_dir / "heatmap_z_score_interactive.html",
+        output_file=out_dir / "heatmap_z_score_interactive_median_across_tissues.html",
         title=title,
+        species_og_to_proteins=species_og_to_proteins,
+        og_to_description=og_to_description,
+        og_to_search_ids=og_to_search_ids,
     )
 
-    search_protein_df = load_search_protein_map(args.matched_orthogroups)
     broad_tables = save_broadly_shared_tables(
         species_intensity=species_intensity,
         search_protein_df=search_protein_df,
