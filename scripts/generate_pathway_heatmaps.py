@@ -135,6 +135,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", required=True, help="Input orthogroup PO matrix TSV/CSV path")
     parser.add_argument("--matched-tsv", required=True, help="Matched orthogroups TSV path")
     parser.add_argument("--output-dir", required=True, help="Directory for heatmap PNG outputs")
+    parser.add_argument(
+        "--all-tissues-template",
+        default=None,
+        help=(
+            "Optional matrix file used as a tissue-column template. "
+            "When set, heatmaps include all template tissue columns in template order; "
+            "missing columns in --input are added as zeros."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -164,7 +173,26 @@ def main() -> None:
     work["_order_rank"] = work["_orthogroup"].map(order_rank).fillna(len(order_rank)).astype(int)
     work = work.sort_values("_order_rank", kind="stable")
 
-    sample_columns = list(work.columns[1:-2])
+    helper_cols = {"_orthogroup", "_order_rank"}
+    input_sample_columns = [c for c in df.columns if c != id_col]
+    sample_columns = [c for c in input_sample_columns if c not in helper_cols]
+
+    if args.all_tissues_template:
+        template_path = Path(args.all_tissues_template)
+        template_df = pd.read_csv(template_path, sep="\t", nrows=0)
+        template_id_col = template_df.columns[0]
+        template_sample_cols = [
+            c for c in template_df.columns if c != template_id_col and c not in helper_cols
+        ]
+
+        # Keep template order, then append any input columns absent from template.
+        sample_columns = template_sample_cols + [
+            c for c in sample_columns if c not in set(template_sample_cols)
+        ]
+
+    # Reindex to guarantee all requested tissues are present (missing -> zero).
+    work = work.reindex(columns=[id_col, "_orthogroup", "_order_rank"] + sample_columns, fill_value=0.0)
+
     sample_labels = [pretty_sample_label(col) for col in sample_columns]
     row_labels = [
         compact_label(f"{label_map.get(orthogroup, 'NA')} [{orthogroup}]")

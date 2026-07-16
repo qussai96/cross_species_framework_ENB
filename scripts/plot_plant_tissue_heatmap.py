@@ -933,6 +933,7 @@ def build_original_maxlfq_table(
         for matrix_col, normalized_pnum in normalized_pnum_by_matrix_col.items()
         if normalized_pnum in source_col_by_normalized_pnum
     }
+    resolved_matrix_cols = [col for col in ordered_plant_cols if col in resolved_source_cols_by_matrix_col]
     available_source_cols = list(dict.fromkeys(resolved_source_cols_by_matrix_col.values()))
     if not available_source_cols:
         raise ValueError(
@@ -980,7 +981,9 @@ def build_original_maxlfq_table(
     merged = prot.merge(values, on="row_id", how="left")
     per_protein = merged.groupby("Protein ID", as_index=True)[available_source_cols].max()
 
-    out = pd.DataFrame(0.0, index=reference_table.index, columns=ordered_plant_cols)
+    # Keep only matrix tissue columns that are resolvable to source intensity columns;
+    # unresolved columns would be all zeros and render as empty stripes in heatmaps.
+    out = pd.DataFrame(0.0, index=reference_table.index, columns=resolved_matrix_cols)
     source_to_matrix_cols: Dict[str, List[str]] = {}
     for matrix_col, src_col in resolved_source_cols_by_matrix_col.items():
         source_to_matrix_cols.setdefault(src_col, []).append(matrix_col)
@@ -1135,9 +1138,27 @@ def render_plant(
     if max_rows > 0 and len(table) > max_rows:
         table = table.iloc[: max_rows].copy()
 
+    full_original_table = full_table.copy()
+    if intensities_dir:
+        full_original_table = build_original_maxlfq_table(
+            reference_table=full_table,
+            ordered_plant_cols=ordered_plant_cols,
+            intensities_dir=intensities_dir,
+            tissue_ontology_path=tissue_ontology_path,
+            plant_display_name=plant_display_name,
+            plant_key=plant_key,
+            plant_aliases=plant_aliases,
+        )
+    original_table = full_original_table.loc[table.index].copy()
+
+    # Keep one consistent tissue-column set across all outputs.
+    effective_plant_cols = list(original_table.columns) if intensities_dir else list(ordered_plant_cols)
+    table = table[effective_plant_cols].copy()
+    original_table = original_table[effective_plant_cols].copy()
+
     pretty_cols = []
     outlier_col_indices = set()
-    for col in ordered_plant_cols:
+    for col in effective_plant_cols:
         col_idx = len(pretty_cols)
         _, po_id, tissue_name = split_matrix_column(col)
         if po_id and tissue_name:
@@ -1152,18 +1173,6 @@ def render_plant(
     plot_table = table.copy()
     plot_table.columns = pretty_cols
 
-    full_original_table = full_table.copy()
-    if intensities_dir:
-        full_original_table = build_original_maxlfq_table(
-            reference_table=full_table,
-            ordered_plant_cols=ordered_plant_cols,
-            intensities_dir=intensities_dir,
-            tissue_ontology_path=tissue_ontology_path,
-            plant_display_name=plant_display_name,
-            plant_key=plant_key,
-            plant_aliases=plant_aliases,
-        )
-    original_table = full_original_table.loc[table.index].copy()
     original_plot_table = original_table.copy()
     original_plot_table.columns = pretty_cols
 

@@ -234,35 +234,57 @@ def save_static_zscore_heatmap(
     width = max(10, min(24, 0.9 * plot_data.shape[1] + 4))
     height = max(6, min(24, 0.35 * plot_data.shape[0] + 2))
 
-    g = sns.clustermap(
-        cluster_data,
-        mask=mask,
-        method="ward",
-        metric="euclidean",
-        cmap=cmap,
-        center=0,
-        figsize=(width, height),
-        row_cluster=True,
-        col_cluster=True,
-        xticklabels=False,
-        yticklabels=True,
-        cbar_kws={"label": "Z-score per orthogroup (log2 intensity)"},
-        dendrogram_ratio=(0.15, 0.15),
-    )
+    try:
+        g = sns.clustermap(
+            cluster_data,
+            mask=mask,
+            method="ward",
+            metric="euclidean",
+            cmap=cmap,
+            center=0,
+            figsize=(width, height),
+            row_cluster=True,
+            col_cluster=True,
+            xticklabels=False,
+            yticklabels=True,
+            cbar_kws={"label": "Z-score per orthogroup (log2 intensity)"},
+            dendrogram_ratio=(0.15, 0.15),
+        )
 
-    ordered_labels = [c.split("|")[0] if "|" in c else c for c in g.data2d.columns]
-    g.ax_heatmap.set_xticks(np.arange(len(ordered_labels)) + 0.5)
-    g.ax_heatmap.set_xticklabels(ordered_labels, rotation=90, ha="center", fontsize=6)
-    g.ax_heatmap.set_xlabel("Orthogroups")
-    g.fig.subplots_adjust(bottom=0.30)
-    g.fig.suptitle(
-        f"{title}\n({plot_data.shape[1]} Orthogroups, {plot_data.shape[0]} Species)",
-        y=1.02,
-        fontsize=14,
-        fontweight="bold",
-    )
-    g.savefig(output_file, dpi=150, bbox_inches="tight")
-    plt.close()
+        ordered_labels = [c.split("|")[0] if "|" in c else c for c in g.data2d.columns]
+        g.ax_heatmap.set_xticks(np.arange(len(ordered_labels)) + 0.5)
+        g.ax_heatmap.set_xticklabels(ordered_labels, rotation=90, ha="center", fontsize=6)
+        g.ax_heatmap.set_xlabel("Orthogroups")
+        g.fig.subplots_adjust(bottom=0.30)
+        g.fig.suptitle(
+            f"{title}\n({plot_data.shape[1]} Orthogroups, {plot_data.shape[0]} Species)",
+            y=1.02,
+            fontsize=14,
+            fontweight="bold",
+        )
+        g.savefig(output_file, dpi=150, bbox_inches="tight")
+        plt.close()
+    except Exception as exc:
+        # Fallback to a plain heatmap when hierarchical clustering is not feasible.
+        print(f"WARNING: clustermap failed ({exc}); falling back to non-clustered heatmap.")
+        plt.figure(figsize=(width, height))
+        ax = sns.heatmap(
+            cluster_data,
+            mask=mask,
+            cmap=cmap,
+            center=0,
+            xticklabels=False,
+            yticklabels=True,
+            cbar_kws={"label": "Z-score (log2 intensity), white=missing/undetected"},
+        )
+        x_labels = [c.split("|")[0] if "|" in c else c for c in plot_data.columns]
+        ax.set_xticks(np.arange(len(x_labels)) + 0.5)
+        ax.set_xticklabels(x_labels, rotation=90, ha="center", fontsize=6)
+        ax.set_xlabel("Orthogroups")
+        plt.subplots_adjust(bottom=0.35)
+        plt.title(f"{title}\n({plot_data.shape[0]} Species, {plot_data.shape[1]} Orthogroups)")
+        plt.savefig(output_file, dpi=150, bbox_inches="tight")
+        plt.close()
 
 
 def save_interactive_zscore_heatmap(
@@ -292,17 +314,22 @@ def save_interactive_zscore_heatmap(
     plot_data = z_df.T
     cluster_data = plot_data.fillna(0)
 
-    if cluster_data.shape[0] < 2:
-        row_order = list(range(cluster_data.shape[0]))
-    else:
-        row_linkage = linkage(cluster_data, method="ward", metric="euclidean")
-        row_order = dendrogram(row_linkage, no_plot=True)["leaves"]
+    try:
+        if cluster_data.shape[0] < 2:
+            row_order = list(range(cluster_data.shape[0]))
+        else:
+            row_linkage = linkage(cluster_data, method="ward", metric="euclidean")
+            row_order = dendrogram(row_linkage, no_plot=True)["leaves"]
 
-    if cluster_data.shape[1] < 2:
+        if cluster_data.shape[1] < 2:
+            col_order = list(range(cluster_data.shape[1]))
+        else:
+            col_linkage = linkage(cluster_data.T, method="ward", metric="euclidean")
+            col_order = dendrogram(col_linkage, no_plot=True)["leaves"]
+    except Exception as exc:
+        print(f"WARNING: interactive clustering failed ({exc}); using original row/column order.")
+        row_order = list(range(cluster_data.shape[0]))
         col_order = list(range(cluster_data.shape[1]))
-    else:
-        col_linkage = linkage(cluster_data.T, method="ward", metric="euclidean")
-        col_order = dendrogram(col_linkage, no_plot=True)["leaves"]
 
     clustered = plot_data.iloc[row_order, col_order]
     og_labels = [c.split("|")[0] if "|" in c else c for c in clustered.columns]

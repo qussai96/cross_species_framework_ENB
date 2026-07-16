@@ -38,6 +38,10 @@ if [[ "${OUTPUT_NAME}" =~ [[:space:]/] ]]; then
     die "output_name must not contain spaces or '/': ${OUTPUT_NAME}"
 fi
 
+if [[ ! "${OUTPUT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    die "output_name contains unsupported characters: ${OUTPUT_NAME} (allowed: A-Z a-z 0-9 . _ -)"
+fi
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY_SCRIPTS_DIR="${REPO_DIR}/scripts"
 
@@ -55,6 +59,9 @@ require_path "${PY_SCRIPTS_DIR}/plot_heatmap.py"
 require_path "${PY_SCRIPTS_DIR}/generate_pathway_heatmaps.py"
 require_path "${PY_SCRIPTS_DIR}/plot_plant_tissue_heatmap.py"
 require_path "${CORE_CROPS_ORTHOGROUPS}"
+if [ ! -e "${DIAMOND_DB}" ] && [ ! -e "${DIAMOND_DB}.dmnd" ]; then
+    die "DIAMOND DB not found at '${DIAMOND_DB}' or '${DIAMOND_DB}.dmnd'"
+fi
 require_path "${METADATA}"
 require_path "${TISSUE_ONTOLOGY}"
 require_path "${OG_ANNOTATION_TABLE}"
@@ -64,6 +71,10 @@ WORKFLOW_DIR="${REPO_DIR}"
 mkdir -p "${OUTPUT_DIR_ARG}"
 OUTPUT_DIR="$(realpath "${OUTPUT_DIR_ARG}")"
 JOB_SCRIPT="${OUTPUT_DIR}/${OUTPUT_NAME}_job.sh"
+
+if [ "${OUTPUT_DIR}" = "/" ] || [ "${OUTPUT_DIR}" = "${REPO_DIR}" ]; then
+    die "Refusing unsafe output_dir '${OUTPUT_DIR}'. Use a dedicated results subdirectory."
+fi
 
 mkdir -p "${OUTPUT_DIR}/logs"
 
@@ -77,7 +88,8 @@ cat > "${JOB_SCRIPT}" <<EOF
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=120G
 
-set -e
+set -euo pipefail
+trap 'echo "ERROR at line \${LINENO}: \${BASH_COMMAND}" >&2' ERR
 
 INPUT_FASTA="${INPUT_FASTA}"
 OUTPUT_NAME="${OUTPUT_NAME}"
@@ -194,7 +206,7 @@ python "\${PY_SCRIPTS_DIR}/plot_plant_tissue_heatmap.py" \
     2>&1 | tee "\${OUTPUT_DIR}/logs/plot_plant_tissue_heatmap.log"
 
 echo "[STEP 6] Organizing outputs at \$(date)"
-mkdir -p "\${OUTPUT_DIR}/extra"
+mkdir -p "\${OUTPUT_DIR}/files"
 mkdir -p "\${OUTPUT_DIR}/heatmaps"
 
 # Move any top-level heatmap image/html artifacts into heatmaps/.
@@ -206,14 +218,19 @@ shopt -u nullglob
 
 # Ensure legacy top-level plant_level is nested under heatmaps/.
 if [ -d "\${OUTPUT_DIR}/plant_level" ]; then
-    rm -rf "\${OUTPUT_DIR}/heatmaps/plant_level"
-    mv "\${OUTPUT_DIR}/plant_level" "\${OUTPUT_DIR}/heatmaps/plant_level"
+    mkdir -p "\${OUTPUT_DIR}/heatmaps/plant_level"
+    shopt -s nullglob dotglob
+    for legacy_item in "\${OUTPUT_DIR}/plant_level"/*; do
+        mv "\${legacy_item}" "\${OUTPUT_DIR}/heatmaps/plant_level/"
+    done
+    shopt -u nullglob dotglob
+    rmdir "\${OUTPUT_DIR}/plant_level" 2>/dev/null || true
 fi
 
 is_keep_item() {
     local name="$1"
     case "\${name}" in
-        extra|heatmaps|\
+        files|heatmaps|\
         protein_orthogroup_po_matrix_mcIBAQ_intensities.csv|\
         orthogroup_summary_barplot.png|\
         Orthogroups_matched_to_\${OUTPUT_NAME}.tsv|\
@@ -230,14 +247,14 @@ is_keep_item() {
 shopt -s nullglob dotglob
 for item in "\${OUTPUT_DIR}"/*; do
     base_name="\$(basename "\${item}")"
-    # Defensive guard: never move organizer target directories into extra/.
-    if [ "\${item}" -ef "\${OUTPUT_DIR}/extra" ] || [ "\${item}" -ef "\${OUTPUT_DIR}/heatmaps" ]; then
+    # Defensive guard: never move organizer target directories into files/.
+    if [ "\${item}" -ef "\${OUTPUT_DIR}/files" ] || [ "\${item}" -ef "\${OUTPUT_DIR}/heatmaps" ]; then
         continue
     fi
     if is_keep_item "\${base_name}"; then
         continue
     fi
-    mv "\${item}" "\${OUTPUT_DIR}/extra/"
+    mv "\${item}" "\${OUTPUT_DIR}/files/"
 done
 shopt -u nullglob dotglob
 

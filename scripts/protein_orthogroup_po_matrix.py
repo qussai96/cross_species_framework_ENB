@@ -296,6 +296,7 @@ def build_matrix_fast(
         p_column_to_pnumber=None,
     ):
         chunks = []
+        all_mapped_cols = set()
 
         if source_dir is None:
             source_dir = intensities_dir
@@ -326,6 +327,19 @@ def build_matrix_fast(
                 continue
 
             path = os.path.join(source_dir, fname)
+
+            # Record all valid tissue columns for this species from file headers,
+            # even if no selected proteins map to them in this query run.
+            try:
+                header_df = pd.read_csv(path, sep='\t', nrows=0)
+                header_int_cols = intensity_columns(header_df.columns)
+                for hcol in header_int_cols:
+                    pnum = normalize_pnumber(p_column_to_pnumber(hcol))
+                    po_label = p_to_label.get(pnum)
+                    if po_label:
+                        all_mapped_cols.add(f"{ortho_col}_{po_label}")
+            except Exception as exc:
+                logging.warning(f"Could not read headers for {path}: {exc}")
 
             for df in pd.read_csv(path, sep='\t', chunksize=200_000, low_memory=False):
 
@@ -393,6 +407,12 @@ def build_matrix_fast(
         logging.info(f"Final aggregation for {matrix_label} matrix...")
         final = pd.concat(chunks)
         final = final.groupby(['orthogroup_with_desc', 'col'])['intensity'].mean().unstack(fill_value=0)
+
+        # Keep all mapped tissue columns (including all-zero undetected columns)
+        # so downstream "all_tissues" heatmaps represent the full tissue universe.
+        if all_mapped_cols:
+            ordered_cols = sorted(all_mapped_cols)
+            final = final.reindex(columns=ordered_cols, fill_value=0)
 
         if og_desc_path and os.path.exists(og_desc_path):
             og_desc = pd.read_csv(og_desc_path, sep='\t', dtype=str)

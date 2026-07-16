@@ -3,6 +3,7 @@
 import pandas as pd
 import sys
 from collections import defaultdict
+from pandas.errors import EmptyDataError
 
 def split_genes(cell):
     if pd.isna(cell) or str(cell).strip() == "":
@@ -15,7 +16,16 @@ def load_mapping(mapping_file):
     Second column = orthofinder_protein_id
     Ignore remaining columns
     """
-    df = pd.read_csv(mapping_file, sep="\t", header=None, dtype=str)
+    try:
+        df = pd.read_csv(mapping_file, sep="\t", header=None, dtype=str)
+    except EmptyDataError:
+        return defaultdict(list), set()
+    if df.empty:
+        return defaultdict(list), set()
+    if df.shape[1] < 2:
+        raise ValueError(
+            f"Mapping file must contain at least 2 tab-separated columns, got {df.shape[1]}: {mapping_file}"
+        )
     df = df.iloc[:, :2]  # keep only first two columns
     df.columns = ["search_id", "ortho_id"]
 
@@ -32,6 +42,12 @@ def extract_orthogroups(mapping_file, orthogroups_file, output_file):
     og_df = pd.read_csv(orthogroups_file, sep="\t", dtype=str).fillna("")
     og_col = og_df.columns[0]
     species_cols = og_df.columns[1:]
+
+    if not target_proteins:
+        empty_cols = [og_col, "search_protein_id"] + list(species_cols)
+        pd.DataFrame(columns=empty_cols).to_csv(output_file, sep="\t", index=False)
+        print("No input mappings found; wrote empty orthogroup table with headers.")
+        return
 
     results = []
 
@@ -53,7 +69,8 @@ def extract_orthogroups(mapping_file, orthogroups_file, output_file):
 
     if not results:
         print("No matching orthogroups found.")
-        pd.DataFrame().to_csv(output_file, sep="\t", index=False)
+        empty_cols = [og_col, "search_protein_id"] + list(species_cols)
+        pd.DataFrame(columns=empty_cols).to_csv(output_file, sep="\t", index=False)
         return
 
     out_df = pd.DataFrame(results)
