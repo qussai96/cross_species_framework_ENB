@@ -858,7 +858,7 @@ def build_heatmap_table(
     return out
 
 
-def build_original_maxlfq_table(
+def build_original_mcibaq_table(
     reference_table: pd.DataFrame,
     ordered_plant_cols: List[str],
     intensities_dir: str,
@@ -911,10 +911,14 @@ def build_original_maxlfq_table(
     intensity_df = pd.read_csv(intensity_path, sep="\t", low_memory=False)
     source_col_by_normalized_pnum: Dict[str, str] = {}
 
-    maxlfq_cols = [c for c in intensity_df.columns if "MaxLFQ Intensity" in str(c)]
-    if maxlfq_cols:
-        for col in maxlfq_cols:
-            raw_pnum = str(col).replace("MaxLFQ Intensity", "").strip()
+    legacy_pattern = re.compile(r"max\s*lfq", re.IGNORECASE)
+    legacy_intensity_cols = [
+        c for c in intensity_df.columns
+        if legacy_pattern.search(str(c)) and "Intensity" in str(c)
+    ]
+    if legacy_intensity_cols:
+        for col in legacy_intensity_cols:
+            raw_pnum = legacy_pattern.sub("", str(col)).replace("Intensity", "").strip()
             normalized_pnum = normalize_pnumber(raw_pnum)
             if normalized_pnum and normalized_pnum not in source_col_by_normalized_pnum:
                 source_col_by_normalized_pnum[normalized_pnum] = col
@@ -933,7 +937,6 @@ def build_original_maxlfq_table(
         for matrix_col, normalized_pnum in normalized_pnum_by_matrix_col.items()
         if normalized_pnum in source_col_by_normalized_pnum
     }
-    resolved_matrix_cols = [col for col in ordered_plant_cols if col in resolved_source_cols_by_matrix_col]
     available_source_cols = list(dict.fromkeys(resolved_source_cols_by_matrix_col.values()))
     if not available_source_cols:
         raise ValueError(
@@ -981,9 +984,7 @@ def build_original_maxlfq_table(
     merged = prot.merge(values, on="row_id", how="left")
     per_protein = merged.groupby("Protein ID", as_index=True)[available_source_cols].max()
 
-    # Keep only matrix tissue columns that are resolvable to source intensity columns;
-    # unresolved columns would be all zeros and render as empty stripes in heatmaps.
-    out = pd.DataFrame(0.0, index=reference_table.index, columns=resolved_matrix_cols)
+    out = pd.DataFrame(0.0, index=reference_table.index, columns=ordered_plant_cols)
     source_to_matrix_cols: Dict[str, List[str]] = {}
     for matrix_col, src_col in resolved_source_cols_by_matrix_col.items():
         source_to_matrix_cols.setdefault(src_col, []).append(matrix_col)
@@ -1014,7 +1015,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--intensities",
         default=None,
-        help="Optional directory containing per-plant *.proteins.tsv files used for original MaxLFQ outputs",
+        help="Optional directory containing per-plant *.proteins.tsv or *_mcIBAQ.intensities.tsv files used for original mcIBAQ outputs",
     )
     parser.add_argument(
         "--input-fasta",
@@ -1045,7 +1046,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-png",
         default=None,
-        help="Output PNG heatmap path (default: <matrix_dir>/<plant>_plant_tissues_heatmap.png)",
+        help="Output JPG heatmap path (default: <matrix_dir>/<plant>_plant_tissues_heatmap.jpg)",
     )
     parser.add_argument(
         "--output-tsv",
@@ -1138,27 +1139,9 @@ def render_plant(
     if max_rows > 0 and len(table) > max_rows:
         table = table.iloc[: max_rows].copy()
 
-    full_original_table = full_table.copy()
-    if intensities_dir:
-        full_original_table = build_original_maxlfq_table(
-            reference_table=full_table,
-            ordered_plant_cols=ordered_plant_cols,
-            intensities_dir=intensities_dir,
-            tissue_ontology_path=tissue_ontology_path,
-            plant_display_name=plant_display_name,
-            plant_key=plant_key,
-            plant_aliases=plant_aliases,
-        )
-    original_table = full_original_table.loc[table.index].copy()
-
-    # Keep one consistent tissue-column set across all outputs.
-    effective_plant_cols = list(original_table.columns) if intensities_dir else list(ordered_plant_cols)
-    table = table[effective_plant_cols].copy()
-    original_table = original_table[effective_plant_cols].copy()
-
     pretty_cols = []
     outlier_col_indices = set()
-    for col in effective_plant_cols:
+    for col in ordered_plant_cols:
         col_idx = len(pretty_cols)
         _, po_id, tissue_name = split_matrix_column(col)
         if po_id and tissue_name:
@@ -1173,6 +1156,18 @@ def render_plant(
     plot_table = table.copy()
     plot_table.columns = pretty_cols
 
+    full_original_table = full_table.copy()
+    if intensities_dir:
+        full_original_table = build_original_mcibaq_table(
+            reference_table=full_table,
+            ordered_plant_cols=ordered_plant_cols,
+            intensities_dir=intensities_dir,
+            tissue_ontology_path=tissue_ontology_path,
+            plant_display_name=plant_display_name,
+            plant_key=plant_key,
+            plant_aliases=plant_aliases,
+        )
+    original_table = full_original_table.loc[table.index].copy()
     original_plot_table = original_table.copy()
     original_plot_table.columns = pretty_cols
 
@@ -1188,8 +1183,8 @@ def render_plant(
     safe_plant = safe_filename(display_name)
     base_dir = output_dir if output_dir else matrix_dir
     base_dir.mkdir(parents=True, exist_ok=True)
-    out_png = Path(output_png) if output_png else base_dir / f"{safe_plant}.png"
-    out_tsv = Path(output_tsv) if output_tsv else base_dir / f"{safe_plant}_plant_tissues_maxlfq_no_edits.tsv"
+    out_png = Path(output_png) if output_png else base_dir / f"{safe_plant}.jpg"
+    out_tsv = Path(output_tsv) if output_tsv else base_dir / f"{safe_plant}_plant_tissues_mcibaq_no_edits.tsv"
     out_tsv_all_hits = base_dir / f"{safe_plant}_plant_tissues_all_hits_in_fasta_order.tsv"
 
     out_png_q1_q3 = out_png.with_name(f"{safe_plant}_q1_q3_capped{out_png.suffix}")
@@ -1284,17 +1279,17 @@ def render_plant(
         plt.savefig(output_path, dpi=200)
         plt.close()
 
-    # 1) Original per-protein MaxLFQ values from the source species TSV, displayed as log10(MaxLFQ+1).
+    # 1) Original per-protein mcIBAQ values from the source species TSV, displayed as log10(mcIBAQ+1).
     display_current = np.log10(original_plot_table + 1.0)
     save_heatmap(
         data=display_current,
         output_path=out_png,
-        title=f"Plant Tissue log10(MaxLFQ+1): {plant_key}\n(y = search_protein_id / plant_protein_id / orthogroup)",
-        cbar_label="log10(MaxLFQ+1)",
+        title=f"Plant Tissue log10(mcIBAQ+1): {plant_key}\n(y = search_protein_id / plant_protein_id / orthogroup)",
+        cbar_label="log10(mcIBAQ+1)",
         cmap="OrRd",
     )
 
-    # 2) log10(maxLFQ+1) with color scale capped at Q1..Q3.
+    # 2) log10(mcIBAQ+1) with color scale capped at Q1..Q3.
     display_log_plus1 = np.log10(plot_table + 1.0)
     finite_vals = display_log_plus1.to_numpy().ravel()
     finite_vals = finite_vals[np.isfinite(finite_vals)]
@@ -1307,16 +1302,16 @@ def render_plant(
     #     data=display_log_plus1_capped,
     #     output_path=out_png_q1_q3,
     #     title=(
-    #         f"Plant Tissue log10(MaxLFQ+1), capped to Q1-Q3: {plant_key}\\n"
+    #         f"Plant Tissue log10(mcIBAQ+1), capped to Q1-Q3: {plant_key}\\n"
     #         f"(Q1={q1:.3f}, Q3={q3:.3f}; y = search_protein_id / plant_protein_id / orthogroup)"
     #     ),
-    #     cbar_label="log10(MaxLFQ+1)",
+    #     cbar_label="log10(mcIBAQ+1)",
     #     cmap="OrRd",
     #     vmin=q1,
     #     vmax=q3,
     # )
 
-    # 3) Row-wise min-max scaling (per protein/orthogroup label) on log10(maxLFQ+1).
+    # 3) Row-wise min-max scaling (per protein/orthogroup label) on log10(mcIBAQ+1).
     # Exclude zeros per row when computing min/max so undetected tissues
     # do not compress the dynamic range of detected values.
     display_log_plus1_nonzero = display_log_plus1.mask(plot_table <= 0)
@@ -1329,7 +1324,7 @@ def render_plant(
     save_heatmap(
         data=display_row_minmax,
         output_path=out_png_row_minmax,
-        title=f"Plant Tissue Row Min-Max on log10(MaxLFQ+1): {plant_key}\\n(y = search_protein_id / plant_protein_id / orthogroup)",
+        title=f"Plant Tissue Row Min-Max on log10(mcIBAQ+1): {plant_key}\\n(y = search_protein_id / plant_protein_id / orthogroup)",
         cbar_label="row min-max (0-1)",
         cmap="OrRd",
         vmin=0.0,
@@ -1363,9 +1358,9 @@ def render_plant(
     print(f"Orthogroup plant column: {plant_protein_col}")
     print(f"Rows plotted: {len(plot_table)}")
     print(f"Tissues: {len(plot_table.columns)}")
-    print(f"Saved raw maxLFQ table (no edits): {out_tsv}")
-    print(f"Saved all-hits raw maxLFQ table in FASTA order: {out_tsv_all_hits}")
-    print(f"Saved heatmap (original MaxLFQ+1): {out_png}")
+    print(f"Saved raw mcIBAQ table (no edits): {out_tsv}")
+    print(f"Saved all-hits raw mcIBAQ table in FASTA order: {out_tsv_all_hits}")
+    print(f"Saved heatmap (original mcIBAQ+1): {out_png}")
     print(f"Saved heatmap (Q1-Q3 capped): {out_png_q1_q3}")
     print(f"Saved heatmap (row min-max): {out_png_row_minmax}")
     print(f"Saved heatmap (orthogroup-collapsed): {out_png_orthogroup_collapsed}")

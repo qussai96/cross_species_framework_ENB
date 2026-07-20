@@ -14,6 +14,8 @@ from pathlib import Path
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+LEGACY_LFQ_RE = re.compile(r"max\s*lfq", re.IGNORECASE)
+
 # ---------------- utils ----------------
 
 def setup_logging(log=None):
@@ -42,6 +44,16 @@ def normalize_label_part(value):
     text = re.sub(r'[^A-Za-z0-9:]+', '_', text)
     text = re.sub(r'_+', '_', text).strip('_')
     return text or "unknown_tissue"
+
+
+def strip_legacy_lfq_token(value):
+    text = str(value)
+    return LEGACY_LFQ_RE.sub("", text)
+
+
+def is_legacy_lfq_intensity_col(value):
+    text = str(value)
+    return text.endswith(' Intensity') and bool(LEGACY_LFQ_RE.search(text))
 
 
 def parse_interproscan_with_fasta(interproscan_file, input_fasta):
@@ -117,6 +129,75 @@ def parse_interproscan(interproscan_file):
     """
     logging.warning("parse_interproscan() is deprecated. Use parse_interproscan_with_fasta() instead.")
     return {}
+
+
+def _clean_protein_ids(values):
+    cleaned = []
+    if values is None:
+        return cleaned
+
+    for value in values:
+        if value is None:
+            continue
+        token = str(value).strip()
+        if not token or token.lower() in {'none', 'nan', 'na'}:
+            continue
+        cleaned.extend([part.strip() for part in token.replace(';', ',').split(',') if part.strip()])
+    return cleaned
+
+
+def extract_primary_protein_ids(df):
+    protein_col = None
+    if 'Protein ID' in df.columns:
+        protein_col = 'Protein ID'
+    elif 'Protein' in df.columns:
+        protein_col = 'Protein'
+
+    if protein_col is None:
+        return []
+
+    primary = df[[protein_col]].copy().rename(columns={protein_col: 'Protein ID'})
+    primary['Protein ID'] = primary['Protein ID'].replace({pd.NA: None, np.nan: None})
+    primary = primary.dropna(subset=['Protein ID'])
+    return _clean_protein_ids(primary['Protein ID'].tolist())
+
+
+def extract_indistinguishable_protein_ids(df):
+    if 'Indistinguishable Proteins' not in df.columns:
+        return []
+
+    extra = df[['Indistinguishable Proteins']].dropna()
+    extra = extra.rename(columns={'Indistinguishable Proteins': 'Protein ID'})
+    extra['Protein ID'] = extra['Protein ID'].replace({pd.NA: None, np.nan: None})
+    extra = extra.dropna(subset=['Protein ID'])
+    return _clean_protein_ids(extra['Protein ID'].tolist())
+
+
+def extract_protein_ids(df):
+    """Extract protein identifiers from the main protein column and the fallback indistinguishable-protein column."""
+    protein_ids = extract_primary_protein_ids(df) + extract_indistinguishable_protein_ids(df)
+
+    # Keep only non-empty identifiers and preserve order while avoiding duplicates.
+    seen = set()
+    cleaned = []
+    for protein_id in protein_ids:
+        if protein_id in seen:
+            continue
+        seen.add(protein_id)
+        cleaned.append(protein_id)
+    return cleaned
+
+
+def get_fallback_protein_ids(df, known_proteins):
+    primary_ids = set(extract_primary_protein_ids(df))
+    fallback_ids = extract_indistinguishable_protein_ids(df)
+    if not fallback_ids:
+        return []
+
+    if primary_ids and any(pid in known_proteins for pid in primary_ids):
+        return []
+
+    return [protein_id for protein_id in fallback_ids if protein_id in known_proteins]
 
 
 def _format_orthogroup_with_desc(orthogroup, protein, protein_descriptions):
@@ -304,8 +385,7 @@ def build_matrix_fast(
         if p_column_to_pnumber is None:
             def p_column_to_pnumber(value):
                 return (
-                    str(value)
-                    .replace('MaxLFQ Intensity', '')
+                    strip_legacy_lfq_token(str(value))
                     .replace('Intensity', '')
                     .strip()
                 )
@@ -353,19 +433,19 @@ def build_matrix_fast(
                     continue
 
                 # ---- proteins ----
-                prot = df[[protein_col]].copy()
-                prot = prot.rename(columns={protein_col: 'Protein ID'})
-                prot['Protein ID'] = prot['Protein ID'].astype(str)
+                prot = pd.DataFrame({'Protein ID': extract_protein_ids(df)})
+                if prot.empty:
+                    continue
 
-                if 'Indistinguishable Proteins' in df.columns:
-                    extra = df[['Indistinguishable Proteins']].dropna()
-                    extra = extra.rename(columns={'Indistinguishable Proteins': 'Protein ID'})
-                    prot = pd.concat([prot, extra])
-
-                prot['Protein ID'] = prot['Protein ID'].str.replace(';', ',')
-                prot['Protein ID'] = prot['Protein ID'].str.split(',')
-                prot = prot.explode('Protein ID')
-                prot['Protein ID'] = prot['Protein ID'].str.strip()
+                known_proteins = set(og_long['protein'].dropna().astype(str).tolist())
+                fallback_ids = get_fallback_protein_ids(df, known_proteins)
+                if fallback_ids:
+                    logging.info(
+                        "Indistinguishable-protein fallback matched orthogroups for species=%s file=%s: %s",
+                        species,
+                        fname,
+                        ", ".join(fallback_ids),
+                    )
 
                 # ---- intensities ----
                 int_cols = intensity_columns(df.columns)
@@ -425,7 +505,7 @@ def build_matrix_fast(
         return final
 
     raw_final = build_final_matrix(
-        lambda cols: [c for c in cols if c.endswith(' Intensity') and 'MaxLFQ Intensity' not in c],
+        lambda cols: [c for c in cols if str(c).endswith(' Intensity') and not is_legacy_lfq_intensity_col(c)],
         matrix_label='raw intensities',
     )
     raw_final.to_csv(output_raw, sep='\t')

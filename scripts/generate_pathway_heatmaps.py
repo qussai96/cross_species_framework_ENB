@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -48,11 +48,50 @@ def split_matrix_column(col: str) -> Tuple[str, Optional[str], Optional[str]]:
     return plant, "PO:" + po, tissue
 
 
-def pretty_sample_label(col: str) -> str:
+def normalize_species_key(name: str) -> str:
+    s = str(name).strip()
+    for suffix in [".helixer.faa", ".helixer.fa", ".helixer", ".pep.all.faa", ".pep.all.fa", ".faa", ".fa", ".fasta"]:
+        if s.endswith(suffix):
+            s = s[: -len(suffix)]
+            break
+    return s
+
+
+def read_plant_name_map(metadata_path: Optional[Union[str, Path]]) -> Dict[str, str]:
+    if not metadata_path:
+        return {}
+
+    path = Path(metadata_path)
+    if not path.exists():
+        return {}
+
+    meta = pd.read_csv(path, sep="\t", dtype=str)
+    if not {"FASTA", "Name"}.issubset(meta.columns):
+        return {}
+
+    out: Dict[str, str] = {}
+    for _, row in meta[["FASTA", "Name"]].dropna().iterrows():
+        fasta = normalize_species_key(str(row["FASTA"]))
+        name = str(row["Name"]).strip()
+        if fasta and name:
+            out[fasta] = name
+    return out
+
+
+def pretty_sample_label(col: str, plant_name_map: Optional[Dict[str, str]] = None) -> str:
     plant, _, tissue = split_matrix_column(col)
+    display_name = plant
+    if plant_name_map:
+        normalized_plant = normalize_species_key(plant)
+        display_name = plant_name_map.get(normalized_plant, plant)
     if tissue:
-        return f"{plant} + {tissue.replace('_', ' ')}"
-    return col.replace("_", " ")
+        return f"{display_name} + {tissue.replace('_', ' ')}"
+    return display_name.replace("_", " ")
+
+
+def build_sample_labels(sample_columns: List[str], metadata_path: Optional[Union[str, Path]] = None) -> List[str]:
+    plant_name_map = read_plant_name_map(metadata_path)
+    return [pretty_sample_label(col, plant_name_map) for col in sample_columns]
 
 
 def build_label_map(matched_df: pd.DataFrame) -> Tuple[Dict[str, str], List[str]]:
@@ -108,6 +147,12 @@ def draw_heatmap(
     n_rows, n_cols = matrix.shape
     fig_w, fig_h = choose_figure_size(n_rows, n_cols)
 
+    if len(x_labels) != n_cols:
+        if len(x_labels) > n_cols:
+            x_labels = x_labels[:n_cols]
+        else:
+            x_labels = x_labels + [""] * (n_cols - len(x_labels))
+
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), constrained_layout=True)
     im = ax.imshow(matrix, aspect="auto", interpolation="nearest", cmap=cmap, vmin=vmin, vmax=vmax)
 
@@ -143,6 +188,11 @@ def parse_args() -> argparse.Namespace:
             "When set, heatmaps include all template tissue columns in template order; "
             "missing columns in --input are added as zeros."
         ),
+    )
+    parser.add_argument(
+        "--metadata",
+        default=None,
+        help="Optional metadata TSV with FASTA and Name columns used to resolve plant display names.",
     )
     return parser.parse_args()
 
@@ -190,10 +240,16 @@ def main() -> None:
             c for c in sample_columns if c not in set(template_sample_cols)
         ]
 
+    sample_columns = [
+        col for _, col in sorted(
+            zip(build_sample_labels(sample_columns, args.metadata), sample_columns),
+            key=lambda item: item[0].casefold(),
+        )
+    ]
+    sample_labels = build_sample_labels(sample_columns, args.metadata)
+
     # Reindex to guarantee all requested tissues are present (missing -> zero).
     work = work.reindex(columns=[id_col, "_orthogroup", "_order_rank"] + sample_columns, fill_value=0.0)
-
-    sample_labels = [pretty_sample_label(col) for col in sample_columns]
     row_labels = [
         compact_label(f"{label_map.get(orthogroup, 'NA')} [{orthogroup}]")
         for orthogroup in work["_orthogroup"].tolist()
@@ -208,10 +264,10 @@ def main() -> None:
     zscore_matrix = zscore_per_row(matrix)
 
     transformations = [
-        (log10_matrix, "log10(intensity + 1)", output_dir / "heatmap_log10_intensity_all_tissues.png", "OrRd", None, None),
-        (minmax_matrix, "Min-Max per row (raw intensity)", output_dir / "heatmap_minmax_per_row_all_tissues.png", "OrRd", 0.0, 1.0),
-        (log10_minmax_matrix, "log10(intensity + 1) + Min-Max per row", output_dir / "heatmap_log10_minmax_per_row_all_tissues.png", "OrRd", 0.0, 1.0),
-        (zscore_matrix, "Z-score per row (raw intensity)", output_dir / "heatmap_zscore_per_row_all_tissues.png", "OrRd", -3.0, 3.0),
+        (log10_matrix, "log10(intensity + 1)", output_dir / "heatmap_log10_intensity_all_tissues.jpg", "OrRd", None, None),
+        (minmax_matrix, "Min-Max per row (raw intensity)", output_dir / "heatmap_minmax_per_row_all_tissues.jpg", "OrRd", 0.0, 1.0),
+        (log10_minmax_matrix, "log10(intensity + 1) + Min-Max per row", output_dir / "heatmap_log10_minmax_per_row_all_tissues.jpg", "OrRd", 0.0, 1.0),
+        (zscore_matrix, "Z-score per row (raw intensity)", output_dir / "heatmap_zscore_per_row_all_tissues.jpg", "OrRd", -3.0, 3.0),
     ]
 
     for mat, title, out_file, cmap, vmin, vmax in transformations:

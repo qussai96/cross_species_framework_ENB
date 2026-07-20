@@ -599,7 +599,7 @@ def save_summary_barplot(species_intensity: pd.DataFrame, name: str, out_dir: Pa
     axes[1].set_ylabel("")
     fig.suptitle(f"Orthogroup summary counts {name}", y=1.02)
     fig.tight_layout()
-    fig.savefig(out_dir / "orthogroup_summary_barplot.png", dpi=150, bbox_inches="tight")
+    fig.savefig(out_dir / "orthogroup_summary_barplot.jpg", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
     return summary_counts
@@ -655,7 +655,7 @@ def main() -> None:
 
     save_static_zscore_heatmap(
         species_intensity=species_intensity,
-        output_file=out_dir / "heatmap_z_score_median_across_tissues.png",
+        output_file=out_dir / "heatmap_z_score_median_across_tissues.jpg",
         title=title,
         min_species_presence=args.min_species_presence,
     )
@@ -682,7 +682,7 @@ def main() -> None:
     summary_counts = save_summary_barplot(species_intensity=species_intensity, name=args.name, out_dir=out_dir)
 
     print(f"Saved heatmaps to: {out_dir}")
-    print(f"Saved barplot to: {out_dir / 'orthogroup_summary_barplot.png'}")
+    print(f"Saved barplot to: {out_dir / 'orthogroup_summary_barplot.jpg'}")
     print("Saved 6 TSV files:")
     print(f" - {out_dir / 'heatmap_original_values.tsv'}")
     print(f" - {out_dir / 'orthogroup_summary_barplot_counts.tsv'}")

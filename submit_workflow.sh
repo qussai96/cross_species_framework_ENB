@@ -188,6 +188,7 @@ mkdir -p "\${OUTPUT_DIR}/heatmaps"
 python "\${PY_SCRIPTS_DIR}/generate_pathway_heatmaps.py" \
     --input "\${OUTPUT_DIR}/protein_orthogroup_po_matrix_mcIBAQ_intensities.csv" \
     --matched-tsv "\${OUTPUT_DIR}/Orthogroups_matched_to_\${OUTPUT_NAME}.tsv" \
+    --metadata "\${METADATA}" \
     --output-dir "\${OUTPUT_DIR}/heatmaps" \
     2>&1 | tee "\${OUTPUT_DIR}/logs/generate_pathway_heatmaps.log"
 
@@ -211,7 +212,7 @@ mkdir -p "\${OUTPUT_DIR}/heatmaps"
 
 # Move any top-level heatmap image/html artifacts into heatmaps/.
 shopt -s nullglob
-for hm in "\${OUTPUT_DIR}"/heatmap*.png "\${OUTPUT_DIR}"/heatmap*.html; do
+for hm in "\${OUTPUT_DIR}"/heatmap*.jpg "\${OUTPUT_DIR}"/heatmap*.png "\${OUTPUT_DIR}"/heatmap*.html; do
     mv "\${hm}" "\${OUTPUT_DIR}/heatmaps/"
 done
 shopt -u nullglob
@@ -232,7 +233,7 @@ is_keep_item() {
     case "\${name}" in
         files|heatmaps|\
         protein_orthogroup_po_matrix_mcIBAQ_intensities.csv|\
-        orthogroup_summary_barplot.png|\
+        orthogroup_summary_barplot.jpg|\
         Orthogroups_matched_to_\${OUTPUT_NAME}.tsv|\
         orthogroups_enriched_thresholds.tsv|\
         orthogroups_broadly_shared_all_species.tsv)
