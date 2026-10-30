@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-#edit fasta header, keep everyting before first space
+# Edit FASTA headers: retain the identifier before the first whitespace and
+# replace commas because downstream tables use commas to separate query IDs.
 
 import sys
 
@@ -11,15 +12,20 @@ def process_fasta(input_fasta, output_faa):
         seq_lines = []
 
         def flush():
-            if header and header not in seen:
-                seen.add(header)
-                fout.write(f">{header}\n")
-                fout.write("".join(seq_lines))
+            if not header:
+                return
+            if header in seen:
+                raise ValueError(
+                    f"Duplicate FASTA identifier after comma sanitization: {header}"
+                )
+            seen.add(header)
+            fout.write(f">{header}\n")
+            fout.write("".join(seq_lines))
 
         for line in fin:
             if line.startswith(">"):
                 flush()
-                header = line[1:].strip().split()[0]
+                header = line[1:].strip().split()[0].replace(",", "_")
                 seq_lines = []
             else:
                 seq_lines.append(line)

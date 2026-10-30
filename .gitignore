@@ -1,7 +1,9 @@
-/tests/
-ibaq_tables/
-/Hormones_Julien_list/
-/__pycache__/
-/Combined_ibaq_intensities/
-/Results/
-/iBAQ/
+config.sh
+Results/
+queries/
+data/
+*.out
+*.err
+__pycache__/
+*.py[cod]
+.DS_Store

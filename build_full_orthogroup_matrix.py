@@ -10,7 +10,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from protein_orthogroup_po_matrix import build_matrix_fast, setup_logging
+from protein_orthogroup_pnumber_matrix import build_matrix_fast, setup_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional directory with *_mcIBAQ.intensities.tsv files",
     )
     parser.add_argument("--tissue-ontology", required=True, help="Tissue ontology TSV path")
+    parser.add_argument(
+        "--pnumber-tissues",
+        default=None,
+        help="Fallback TSV with Plant, Tissue, and p-number columns",
+    )
     parser.add_argument("--metadata", required=True, help="all_crops_metadata.tsv path")
     parser.add_argument(
         "--output-dir",
@@ -40,6 +45,17 @@ def parse_args() -> argparse.Namespace:
         "--output-raw",
         default=None,
         help="Optional legacy output path for the raw intensity matrix TSV",
+    )
+    parser.add_argument(
+        "--skip-raw",
+        action="store_true",
+        help="Build only the mcIBAQ matrix and skip the separate raw-intensity matrix",
+    )
+    parser.add_argument(
+        "--aggregation",
+        choices=("max", "sum", "median"),
+        default="max",
+        help="Combine multiple protein-group rows within an orthogroup/tissue",
     )
     parser.add_argument(
         "--og-annotation-table",
@@ -63,8 +79,12 @@ def main() -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_output = Path(args.output_raw) if args.output_raw else output_dir / "protein_orthogroup_po_matrix_raw_intensities.csv"
-    ibaq_output = output_dir / "protein_orthogroup_po_matrix_mcIBAQ_intensities.csv"
+    raw_output = None if args.skip_raw else (
+        Path(args.output_raw)
+        if args.output_raw
+        else output_dir / "protein_orthogroup_pnumber_matrix_raw_intensities.tsv"
+    )
+    ibaq_output = output_dir / "protein_orthogroup_pnumber_matrix_mcIBAQ_intensities.tsv"
     og_desc_path = output_dir / "OG_Desc.tsv"
 
     build_matrix_fast(
@@ -72,11 +92,13 @@ def main() -> None:
         intensities_dir=args.intensities,
         tissue_ontology=args.tissue_ontology,
         metadata=args.metadata,
-        output_raw=str(raw_output),
+        output_raw=str(raw_output) if raw_output else None,
         ibaq_dir=args.ibaq_intensities,
         output_ibaq=str(ibaq_output) if args.ibaq_intensities else None,
         og_desc_path=str(og_desc_path),
         og_annotation_table=args.og_annotation_table,
+        pnumber_tissues=args.pnumber_tissues,
+        aggregation=args.aggregation,
     )
 
 

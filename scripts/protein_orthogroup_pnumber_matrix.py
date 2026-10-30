@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FAST Orthogroup × Species_PO Intensity Matrix
+FAST Orthogroup × Species_pNumber Intensity Matrix
 Vectorized, chunked, no Python row loops
 """
 import pandas as pd
@@ -9,6 +9,7 @@ import os
 import argparse
 import logging
 import re
+from collections import Counter
 from tqdm import tqdm
 from pathlib import Path
 import seaborn as sns
@@ -30,7 +31,11 @@ def normalize_pnumber(s):
     if pd.isna(s) or s is None:
         return None
     s = str(s).strip()
+    # mcIBAQ headers may encode both a biological replicate and a positional
+    # suffix (for example P087089_rep1_1).  Remove the positional suffix first,
+    # then the replicate token so the result matches ontology key P087089.
     s = re.sub(r'_[0-9]+$', '', s)
+    s = re.sub(r'_rep(?:licate)?[0-9]+$', '', s, flags=re.IGNORECASE)
     s = re.sub(r'\.v\d+$', '', s)
     return s
 
@@ -44,6 +49,15 @@ def normalize_label_part(value):
     text = re.sub(r'[^A-Za-z0-9:]+', '_', text)
     text = re.sub(r'_+', '_', text).strip('_')
     return text or "unknown_tissue"
+
+
+def matrix_species_from_column(value):
+    """Extract the crop key from current p-number or legacy PO matrix columns."""
+    text = str(value)
+    match = re.fullmatch(r"(.+)_P\d+", text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return text.split('_PO:', 1)[0] if '_PO:' in text else text
 
 
 def strip_legacy_lfq_token(value):
@@ -173,31 +187,71 @@ def extract_indistinguishable_protein_ids(df):
     return _clean_protein_ids(extra['Protein ID'].tolist())
 
 
-def extract_protein_ids(df):
-    """Extract protein identifiers from the main protein column and the fallback indistinguishable-protein column."""
-    protein_ids = extract_primary_protein_ids(df) + extract_indistinguishable_protein_ids(df)
+def protein_group_assignments(df, protein_to_orthogroups):
+    """Assign each FragPipe protein-group row to at most one orthogroup.
 
-    # Keep only non-empty identifiers and preserve order while avoiding duplicates.
-    seen = set()
-    cleaned = []
-    for protein_id in protein_ids:
-        if protein_id in seen:
+    The intensity belongs to the *row*, not to a flattened list of identifiers.
+    Prefer a mapped master/leading protein.  Only when no master maps do we use
+    indistinguishable proteins as a fallback, and only if every mapped fallback
+    points to the same orthogroup.  Cross-orthogroup groups are left unassigned
+    rather than duplicating one measured intensity across several OGs.
+
+    Returns a dataframe containing the source ``row_id`` and one representative
+    mapped protein ID, plus counters used for an auditable build log.
+    """
+    protein_col = 'Protein ID' if 'Protein ID' in df.columns else 'Protein'
+    indistinguishable = (
+        df['Indistinguishable Proteins']
+        if 'Indistinguishable Proteins' in df.columns
+        else pd.Series(index=df.index, dtype='object')
+    )
+    assignments = []
+    counts = Counter()
+
+    for row_id, master_cell, fallback_cell in zip(
+        df.index, df[protein_col], indistinguishable.reindex(df.index)
+    ):
+        master_ids = _clean_protein_ids([master_cell])
+        fallback_ids = _clean_protein_ids([fallback_cell])
+
+        mapped_master_ids = [
+            protein_id for protein_id in master_ids
+            if protein_to_orthogroups.get(protein_id)
+        ]
+        master_ogs = {
+            orthogroup
+            for protein_id in mapped_master_ids
+            for orthogroup in protein_to_orthogroups[protein_id]
+        }
+        if mapped_master_ids:
+            if len(master_ogs) == 1:
+                assignments.append((row_id, mapped_master_ids[0]))
+                counts['master_assigned'] += 1
+            else:
+                counts['ambiguous_master'] += 1
             continue
-        seen.add(protein_id)
-        cleaned.append(protein_id)
-    return cleaned
 
+        mapped_fallback_ids = [
+            protein_id for protein_id in fallback_ids
+            if protein_to_orthogroups.get(protein_id)
+        ]
+        fallback_ogs = {
+            orthogroup
+            for protein_id in mapped_fallback_ids
+            for orthogroup in protein_to_orthogroups[protein_id]
+        }
+        if not mapped_fallback_ids:
+            counts['unmapped'] += 1
+        elif len(fallback_ogs) == 1:
+            assignments.append((row_id, mapped_fallback_ids[0]))
+            counts['indistinguishable_fallback_assigned'] += 1
+        else:
+            counts['ambiguous_indistinguishable_fallback'] += 1
 
-def get_fallback_protein_ids(df, known_proteins):
-    primary_ids = set(extract_primary_protein_ids(df))
-    fallback_ids = extract_indistinguishable_protein_ids(df)
-    if not fallback_ids:
-        return []
-
-    if primary_ids and any(pid in known_proteins for pid in primary_ids):
-        return []
-
-    return [protein_id for protein_id in fallback_ids if protein_id in known_proteins]
+    return (
+        pd.DataFrame(assignments, columns=['row_id', 'Protein ID']),
+        counts,
+    )
 
 
 def _format_orthogroup_with_desc(orthogroup, protein, protein_descriptions):
@@ -268,17 +322,51 @@ def build_matrix_fast(
     protein_descriptions=None,
     og_desc_path=None,
     og_annotation_table=None,
+    aggregation='max',
+    pnumber_tissues=None,
 ):
 
     if protein_descriptions is None:
         protein_descriptions = {}
+    if aggregation not in {'max', 'sum', 'median'}:
+        raise ValueError(
+            f"Unsupported aggregation '{aggregation}'; expected max, sum, or median"
+        )
+    logging.info(
+        "Protein-to-orthogroup intensity aggregation: %s%s",
+        aggregation,
+        " (zeros excluded)" if aggregation == 'median' else "",
+    )
     
     # ---------- metadata ----------
     meta = pd.read_csv(metadata, sep='\t', dtype=str)
     meta['ortho_col'] = meta['FASTA'].str.replace(
         r'\.(faa|fasta|helixer\.faa)$', '', regex=True
     )
-    species_map = dict(zip(meta['Name'], meta['ortho_col']))
+    # Usually the reference-proteome key is also the matrix species key.  If
+    # multiple sampled crops share one reference proteome, however, retaining
+    # that key would merge their tissue columns.  Give those crops their own
+    # matrix keys while continuing to use ``ortho_col`` for protein membership.
+    shared_reference = meta['ortho_col'].duplicated(keep=False)
+    meta['matrix_col'] = meta['ortho_col']
+    meta.loc[shared_reference, 'matrix_col'] = (
+        meta.loc[shared_reference, 'Name'].map(normalize_label_part)
+    )
+    duplicate_matrix_keys = meta.loc[
+        meta['matrix_col'].duplicated(keep=False), ['Name', 'FASTA', 'matrix_col']
+    ]
+    if not duplicate_matrix_keys.empty:
+        raise ValueError(
+            "Metadata does not produce unique matrix species keys:\n"
+            + duplicate_matrix_keys.to_string(index=False)
+        )
+    for reference, rows in meta.loc[shared_reference].groupby('ortho_col'):
+        logging.info(
+            "Shared reference %s: keeping sampled crops separate as %s",
+            reference,
+            ", ".join(rows['matrix_col']),
+        )
+    species_map = dict(zip(meta['Name'], meta['matrix_col']))
 
     # ---------- orthogroups ----------
     logging.info("Loading orthogroups (building orthogroup→description mapping)...")
@@ -290,23 +378,44 @@ def build_matrix_fast(
     if og_annotation_table and os.path.exists(og_annotation_table):
         logging.info(f"Using orthogroup annotations from table: {og_annotation_table}")
         ann = pd.read_csv(og_annotation_table, sep='\t', dtype=str)
-        required_cols = {'orthogroup_id', 'InterPro_domain_description', 'functional_description'}
-        if not required_cols.issubset(set(ann.columns)):
+        if 'orthogroup_id' not in ann.columns:
             raise ValueError(
-                f"Annotation table must contain columns {sorted(required_cols)}; got {ann.columns.tolist()}"
+                "Annotation table must contain column 'orthogroup_id'; "
+                f"got {ann.columns.tolist()}"
             )
 
         ann = ann.dropna(subset=['orthogroup_id'])
-        # Prefer InterPro_domain_description, fall back to functional_description
-        ann['description_to_use'] = ann['InterPro_domain_description'].where(
-            (ann['InterPro_domain_description'].notna()) & 
-            (ann['InterPro_domain_description'].str.strip() != '') &
-            (ann['InterPro_domain_description'] != 'NA'),
-            ann['functional_description']
-        )
+        # This workflow receives only the query-matched orthogroups.  Restrict
+        # the annotation table immediately instead of carrying and exporting
+        # descriptions for every Orthofinder group in the reference dataset.
+        requested_orthogroups = set(og['Orthogroup'].dropna().astype(str))
+        ann = ann[ann['orthogroup_id'].astype(str).isin(requested_orthogroups)].copy()
+        if 'shared_description' in ann.columns:
+            # Current OG_descriptions.tsv schema: the description has already
+            # been selected from all proteins in each orthogroup.
+            ann['description_to_use'] = ann['shared_description']
+        elif {
+            'InterPro_domain_description', 'functional_description'
+        }.issubset(ann.columns):
+            # Legacy annotation schema: prefer InterPro and fall back to the
+            # functional description.
+            ann['description_to_use'] = ann['InterPro_domain_description'].where(
+                (ann['InterPro_domain_description'].notna())
+                & (ann['InterPro_domain_description'].str.strip() != '')
+                & (ann['InterPro_domain_description'] != 'NA'),
+                ann['functional_description'],
+            )
+        else:
+            raise ValueError(
+                "Annotation table must contain either 'shared_description' or both "
+                "'InterPro_domain_description' and 'functional_description'; "
+                f"got {ann.columns.tolist()}"
+            )
+
         ann = ann[ann['description_to_use'].notna()]
-        ann = ann[ann['description_to_use'].str.strip() != '']
-        ann = ann[ann['description_to_use'].str.lower() != 'unknown function']
+        ann['description_to_use'] = ann['description_to_use'].astype(str).str.strip()
+        ann = ann[ann['description_to_use'] != '']
+        ann = ann[~ann['description_to_use'].str.lower().isin({'na', 'unknown function'})]
         ann = ann.drop_duplicates(subset=['orthogroup_id'], keep='first')
 
         orthogroup_descriptions = {
@@ -357,16 +466,62 @@ def build_matrix_fast(
     og_long['orthogroup_with_desc'] = og_long['Orthogroup'].map(
         lambda og_id: f"{og_id}|{orthogroup_descriptions[og_id]}" if og_id in orthogroup_descriptions else og_id
     )
+
+    # Descriptions are annotations, not inclusion criteria.  Keep every
+    # query-assigned orthogroup in the matrix even when no usable description
+    # exists or no protein was detected.  This is essential for presence plots:
+    # an undetected orthogroup must remain distinguishable from an unqueried one.
+    requested_row_labels = list(dict.fromkeys(
+        f"{og_id}|{orthogroup_descriptions[og_id]}"
+        if og_id in orthogroup_descriptions else og_id
+        for og_id in og['Orthogroup'].dropna().astype(str)
+    ))
     
     og_long = og_long[['protein', 'Orthogroup', 'orthogroup_with_desc', 'species']]
+    protein_to_orthogroups = (
+        og_long.groupby('protein')['Orthogroup']
+        .agg(lambda values: frozenset(values.astype(str)))
+        .to_dict()
+    )
 
     # ---------- tissue ontology ----------
     tissue = pd.read_csv(tissue_ontology, sep='\t', dtype=str)
     tissue['p_norm'] = tissue['pNumber'].apply(normalize_pnumber)
-    tissue['PO_norm'] = tissue['PO_1'].fillna('PO:0000000').replace('', 'PO:0000000')
-    tissue['TissueName_norm'] = tissue['TissueName'].fillna('').replace('', 'unknown_tissue').map(normalize_label_part)
-    tissue['po_tissue_label'] = tissue['PO_norm'].astype(str) + '_' + tissue['TissueName_norm'].astype(str)
-    p_to_label = dict(zip(tissue['p_norm'], tissue['po_tissue_label']))
+    known_pnumbers = set(
+        tissue.loc[tissue['p_norm'].fillna('').str.fullmatch(r'P\d+'), 'p_norm']
+    )
+
+    # The curated ontology remains authoritative.  For a valid p-number absent
+    # from it, retain the descriptive tissue name from the simpler mapping
+    # table, but do not infer a PO term: use PO:0000000 explicitly.
+    fallback_pnumbers = set()
+    if pnumber_tissues:
+        fallback = pd.read_csv(pnumber_tissues, sep='\t', dtype=str)
+        required = {'Tissue', 'p-number'}
+        if not required.issubset(fallback.columns):
+            raise ValueError(
+                f"P-number tissue table must contain {sorted(required)}; "
+                f"got {fallback.columns.tolist()}"
+            )
+        fallback['p_norm'] = fallback['p-number'].map(normalize_pnumber)
+        fallback = fallback[
+            fallback['p_norm'].fillna('').str.fullmatch(r'P\d+')
+            & fallback['Tissue'].fillna('').str.strip().ne('')
+        ].copy()
+        duplicated = fallback[fallback['p_norm'].duplicated(keep=False)]
+        if not duplicated.empty:
+            raise ValueError(
+                "Valid p-numbers are not unique in fallback tissue table:\n"
+                + duplicated[['p-number', 'Tissue']].to_string(index=False)
+            )
+        for row in fallback[['p_norm', 'Tissue']].itertuples(index=False):
+            if row.p_norm not in known_pnumbers:
+                known_pnumbers.add(row.p_norm)
+                fallback_pnumbers.add(row.p_norm)
+        logging.info(
+            "Loaded %d fallback p-number tissue label(s) absent from the ontology",
+            len(fallback_pnumbers),
+        )
 
     def build_final_matrix(
         intensity_columns,
@@ -378,6 +533,8 @@ def build_matrix_fast(
     ):
         chunks = []
         all_mapped_cols = set()
+        unmatched_sample_ids = set()
+        assignment_counts = Counter()
 
         if source_dir is None:
             source_dir = intensities_dir
@@ -415,9 +572,13 @@ def build_matrix_fast(
                 header_int_cols = intensity_columns(header_df.columns)
                 for hcol in header_int_cols:
                     pnum = normalize_pnumber(p_column_to_pnumber(hcol))
-                    po_label = p_to_label.get(pnum)
-                    if po_label:
-                        all_mapped_cols.add(f"{ortho_col}_{po_label}")
+                    normalized_pnum = normalize_pnumber(pnum)
+                    is_unmatched = normalized_pnum not in known_pnumbers
+                    if is_unmatched:
+                        unmatched_sample_ids.add(normalized_pnum or str(hcol).strip())
+                    if not normalized_pnum or not re.fullmatch(r'P\d+', normalized_pnum):
+                        raise ValueError(f"Invalid p-number column {hcol!r} in {path}")
+                    all_mapped_cols.add(f"{ortho_col}_{normalized_pnum}")
             except Exception as exc:
                 logging.warning(f"Could not read headers for {path}: {exc}")
 
@@ -432,20 +593,16 @@ def build_matrix_fast(
                 if protein_col is None:
                     continue
 
-                # ---- proteins ----
-                prot = pd.DataFrame({'Protein ID': extract_protein_ids(df)})
+                # ---- protein groups ----
+                # Preserve the original FragPipe row index so a master or
+                # indistinguishable fallback always receives the intensity of
+                # its own protein group, never that of a neighbouring row.
+                prot, chunk_assignment_counts = protein_group_assignments(
+                    df, protein_to_orthogroups
+                )
+                assignment_counts.update(chunk_assignment_counts)
                 if prot.empty:
                     continue
-
-                known_proteins = set(og_long['protein'].dropna().astype(str).tolist())
-                fallback_ids = get_fallback_protein_ids(df, known_proteins)
-                if fallback_ids:
-                    logging.info(
-                        "Indistinguishable-protein fallback matched orthogroups for species=%s file=%s: %s",
-                        species,
-                        fname,
-                        ", ".join(fallback_ids),
-                    )
 
                 # ---- intensities ----
                 int_cols = intensity_columns(df.columns)
@@ -455,13 +612,20 @@ def build_matrix_fast(
                 vals = df[int_cols].copy()
                 vals['row_id'] = vals.index
 
-                prot['row_id'] = prot.index
-
                 merged = (
                     prot
                     .merge(og_long, left_on='Protein ID', right_on='protein', how='inner')
                     .merge(vals, on='row_id', how='left')
                 )
+
+                # A valid assigned orthogroup may have no detected proteins in
+                # this species.  Its absence is biological information, not a
+                # reason to substitute another DIAMOND hit.  Header-derived
+                # tissue columns were already recorded above; skip this empty
+                # observation block and add the assigned orthogroup back as an
+                # all-zero row during final reindexing.
+                if merged.empty:
+                    continue
 
                 melted = merged.melt(
                     id_vars='orthogroup_with_desc',
@@ -472,21 +636,81 @@ def build_matrix_fast(
 
                 melted['p'] = melted['p'].map(p_column_to_pnumber).map(normalize_pnumber)
 
-                melted['po_tissue_label'] = melted['p'].map(p_to_label)
-                melted = melted.dropna(subset=['po_tissue_label', 'intensity'])
-
-                melted['col'] = ortho_col + "_" + melted['po_tissue_label']
-                chunks.append(
-                    melted.groupby(['orthogroup_with_desc', 'col'], as_index=False)['intensity'].mean()
+                unique_pnumbers = melted['p'].drop_duplicates().tolist()
+                unmatched_sample_ids.update(
+                    str(pnum) for pnum in unique_pnumbers
+                    if pnum not in known_pnumbers
                 )
+                melted['intensity'] = pd.to_numeric(melted['intensity'], errors='coerce')
+                invalid_pnumbers = sorted({
+                    str(pnum) for pnum in unique_pnumbers
+                    if not pnum or not re.fullmatch(r'P\d+', str(pnum))
+                })
+                if invalid_pnumbers:
+                    raise ValueError(
+                        f"Invalid normalized p-number(s) in {path}: {invalid_pnumbers}"
+                    )
+                melted = melted.dropna(subset=['p', 'intensity'])
 
-        if not chunks:
-            logging.warning(f"No intensity values found for {matrix_label} matrix")
-            return pd.DataFrame()
+                melted['col'] = ortho_col + "_" + melted['p']
+                group_cols = ['orthogroup_with_desc', 'col']
+                if aggregation == 'median':
+                    # Keep the nonzero observations grouped as lists so the final
+                    # result remains an exact median when a group spans chunks.
+                    chunks.append(
+                        melted.groupby(group_cols)['intensity']
+                        .apply(lambda values: values[values != 0].tolist())
+                        .reset_index(name='intensity_values')
+                    )
+                else:
+                    chunks.append(
+                        melted.groupby(group_cols, as_index=False)['intensity']
+                        .agg(aggregation)
+                    )
 
+        nonempty_chunks = [chunk for chunk in chunks if not chunk.empty]
         logging.info(f"Final aggregation for {matrix_label} matrix...")
-        final = pd.concat(chunks)
-        final = final.groupby(['orthogroup_with_desc', 'col'])['intensity'].mean().unstack(fill_value=0)
+        logging.info(
+            "%s protein-group assignment: %d master, %d unambiguous "
+            "indistinguishable fallback, %d ambiguous master, %d ambiguous "
+            "fallback, %d unmapped",
+            matrix_label,
+            assignment_counts['master_assigned'],
+            assignment_counts['indistinguishable_fallback_assigned'],
+            assignment_counts['ambiguous_master'],
+            assignment_counts['ambiguous_indistinguishable_fallback'],
+            assignment_counts['unmapped'],
+        )
+        group_cols = ['orthogroup_with_desc', 'col']
+        if not nonempty_chunks:
+            logging.warning(f"No matched intensity observations found for {matrix_label} matrix")
+            final = pd.DataFrame(
+                index=pd.Index([], name='orthogroup_with_desc')
+            )
+        elif aggregation == 'median':
+            combined = pd.concat(nonempty_chunks)
+
+            def exact_nonzero_median(group):
+                values = [
+                    value
+                    for chunk_values in group['intensity_values']
+                    for value in chunk_values
+                ]
+                return float(np.median(values)) if values else 0.0
+
+            final = (
+                combined.groupby(group_cols)
+                .apply(exact_nonzero_median)
+                .rename('intensity')
+                .unstack(fill_value=0)
+            )
+        else:
+            combined = pd.concat(nonempty_chunks)
+            final = (
+                combined.groupby(group_cols)['intensity']
+                .agg(aggregation)
+                .unstack(fill_value=0)
+            )
 
         # Keep all mapped tissue columns (including all-zero undetected columns)
         # so downstream "all_tissues" heatmaps represent the full tissue universe.
@@ -494,22 +718,36 @@ def build_matrix_fast(
             ordered_cols = sorted(all_mapped_cols)
             final = final.reindex(columns=ordered_cols, fill_value=0)
 
-        if og_desc_path and os.path.exists(og_desc_path):
-            og_desc = pd.read_csv(og_desc_path, sep='\t', dtype=str)
-            og_keep = set(og_desc['Orthogroup'].dropna())
-            if og_keep:
-                final = final.loc[[idx for idx in final.index if idx.split('|')[0] in og_keep]]
-            else:
-                logging.info("No orthogroups listed in description table; skipping matrix row filtering.")
+        final = final.reindex(index=requested_row_labels, fill_value=0)
+        final.index.name = 'orthogroup_with_desc'
+        detected_rows = int((final > 0).any(axis=1).sum()) if len(final.columns) else 0
+        logging.info(
+            "Retained all %d assigned orthogroups (%d with detected %s values, %d all-zero)",
+            len(final),
+            detected_rows,
+            matrix_label,
+            len(final) - detected_rows,
+        )
+
+        if unmatched_sample_ids:
+            logging.warning(
+                "%s matrix retained %d tissue-annotation-unmatched p-number(s): %s",
+                matrix_label,
+                len(unmatched_sample_ids),
+                ", ".join(sorted(unmatched_sample_ids)),
+            )
 
         return final
 
-    raw_final = build_final_matrix(
-        lambda cols: [c for c in cols if str(c).endswith(' Intensity') and not is_legacy_lfq_intensity_col(c)],
-        matrix_label='raw intensities',
-    )
-    raw_final.to_csv(output_raw, sep='\t')
-    logging.info(f"Saved raw intensity matrix to: {output_raw}")
+    if output_raw:
+        raw_final = build_final_matrix(
+            lambda cols: [c for c in cols if str(c).endswith(' Intensity') and not is_legacy_lfq_intensity_col(c)],
+            matrix_label='raw intensities',
+        )
+        raw_final.to_csv(output_raw, sep='\t')
+        logging.info(f"Saved raw intensity matrix to: {output_raw}")
+    else:
+        logging.info("Skipping raw intensity matrix (mcIBAQ-only workflow)")
 
     if ibaq_dir and output_ibaq:
         def _ibaq_species_from_filename(name):
@@ -524,7 +762,9 @@ def build_matrix_fast(
                 c_str = str(c).strip()
                 if c_str in {'Protein', 'Protein ID', 'Indistinguishable Proteins'}:
                     continue
-                if normalize_pnumber(c_str) in p_to_label:
+                # Missing tissue annotation must not prevent a p-number sample
+                # from entering the matrix.  EGAPx accessions begin with P.
+                if re.match(r'^P\d+', str(normalize_pnumber(c_str) or '')):
                     out.append(c)
             return out
 
@@ -597,7 +837,7 @@ def generate_orthogroup_heatmap(matrix_file, orthogroups_file, input_fasta, outp
     # Collapse PO/tissue columns to median per plant
     species_cols = {}
     for col in df_filtered.columns:
-        species = col.split('_PO:', 1)[0] if '_PO:' in col else col
+        species = matrix_species_from_column(col)
         species_cols.setdefault(species, []).append(col)
 
     # Initialize median_df with plants as rows and orthogroups as columns
@@ -744,7 +984,7 @@ def generate_orthogroup_z_score_heatmap(matrix_file, orthogroups_file, input_fas
     # Collapse PO/tissue columns to median per species
     species_cols = {}
     for col in df_filtered.columns:
-        species = col.split("_PO:", 1)[0] if "_PO:" in col else col
+        species = matrix_species_from_column(col)
         species_cols.setdefault(species, []).append(col)
 
     # species_intensity: rows = orthogroups, cols = species
@@ -850,11 +1090,32 @@ def main():
     p.add_argument('--orthogroups', required=True)
     p.add_argument('--intensities', required=True)
     p.add_argument('--tissue-ontology', required=True)
+    p.add_argument('--pnumber-tissues', default=None,
+                   help='Fallback TSV with Plant, Tissue, and p-number columns')
     p.add_argument('--metadata', required=True)
     p.add_argument('--interproscan', required=False, default=None, help='Path to InterProScan TSV file')
     p.add_argument('--og-annotation-table', required=False, default=None,
                    help='Path to orthogroup annotation table with orthogroup_id and functional_description columns')
     p.add_argument('--output', required=True)
+    p.add_argument(
+        '--expanded-output',
+        default=None,
+        help='Optional output path for the query-protein-expanded tissue matrix',
+    )
+    p.add_argument(
+        '--skip-raw',
+        action='store_true',
+        help='Do not build the separate FragPipe raw-intensity matrix',
+    )
+    p.add_argument(
+        '--aggregation',
+        choices=['max', 'sum', 'median'],
+        default='max',
+        help=(
+            'Combine protein intensities within each orthogroup/tissue using max '
+            '(default), sum, or median (zeros excluded)'
+        ),
+    )
     p.add_argument('--log')
     args = p.parse_args()
 
@@ -867,9 +1128,10 @@ def main():
     
     requested_output = Path(args.output)
     output_dir = requested_output.parent
-    raw_output = output_dir / "protein_orthogroup_po_matrix_raw_intensities.csv"
+    raw_output = None if args.skip_raw else output_dir / "protein_orthogroup_pnumber_matrix_raw_intensities.tsv"
     og_desc_path = output_dir / "OG_Desc.tsv"
-    expanded_output = output_dir / f"search_protein_{requested_output.name}"
+    expanded_output = (Path(args.expanded_output) if args.expanded_output else
+                       output_dir / f"query_protein_{requested_output.name}")
 
     def _has_mcibaq_files(directory):
         try:
@@ -890,12 +1152,14 @@ def main():
             args.intensities,
             args.tissue_ontology,
             args.metadata,
-            str(raw_output),
+            str(raw_output) if raw_output else None,
             ibaq_dir=args.intensities,
             output_ibaq=str(requested_output),
             protein_descriptions=protein_descriptions,
             og_desc_path=str(og_desc_path),
             og_annotation_table=args.og_annotation_table,
+            aggregation=args.aggregation,
+            pnumber_tissues=args.pnumber_tissues,
         )
     else:
         build_matrix_fast(
@@ -903,12 +1167,14 @@ def main():
             args.intensities,
             args.tissue_ontology,
             args.metadata,
-            str(raw_output),
+            str(raw_output) if raw_output else None,
             ibaq_dir=args.intensities,
             output_ibaq=str(requested_output),
             protein_descriptions=protein_descriptions,
             og_desc_path=str(og_desc_path),
             og_annotation_table=args.og_annotation_table,
+            aggregation=args.aggregation,
+            pnumber_tissues=args.pnumber_tissues,
         )
 
     expanded_row_count = write_search_protein_expanded_matrix(
@@ -944,8 +1210,11 @@ def main():
     
     # Load matrix to count orthogroups with values
     if not Path(matrix_for_stats).exists():
-        logging.warning(f"Expected matrix not found for stats: {matrix_for_stats}. Falling back to {raw_output}")
-        matrix_for_stats = str(raw_output)
+        if raw_output:
+            logging.warning(f"Expected matrix not found for stats: {matrix_for_stats}. Falling back to {raw_output}")
+            matrix_for_stats = str(raw_output)
+        else:
+            raise FileNotFoundError(f"Expected mcIBAQ matrix not found: {matrix_for_stats}")
 
     try:
         matrix_df = pd.read_csv(matrix_for_stats, sep='\t', index_col=0)
@@ -953,14 +1222,16 @@ def main():
         logging.warning(f"Matrix file is empty for stats: {matrix_for_stats}")
         matrix_df = pd.DataFrame()
     
-    tissue_cols = list(matrix_df.columns[1:]) if not matrix_df.empty else []
+    # index_col=0 above has already removed the orthogroup identifier; every
+    # remaining column is a tissue.  Skipping columns[0] undercounted tissues.
+    tissue_cols = list(matrix_df.columns) if not matrix_df.empty else []
     nonzero_cols = []
     if tissue_cols:
         numeric_matrix = matrix_df[tissue_cols].apply(pd.to_numeric, errors='coerce').fillna(0.0)
         nonzero_mask = (numeric_matrix > 0).any(axis=0)
         nonzero_cols = [col for col, keep in nonzero_mask.items() if keep]
 
-    detected_species = sorted({col.split('_PO:', 1)[0] for col in nonzero_cols if '_PO:' in col})
+    detected_species = sorted({matrix_species_from_column(col) for col in nonzero_cols})
     ogs_with_values = int(((matrix_df[tissue_cols].apply(pd.to_numeric, errors='coerce').fillna(0.0).sum(axis=1) > 0).sum())) if tissue_cols else 0
     
     # Write statistics to file
