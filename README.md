@@ -120,11 +120,3 @@ Results/<Category>/
 Colors are consistent: light gray `#E3E6E8` means OG absent/unassigned, dark
 gray `#AEB4BA` means OG present but mcIBAQ missing/zero, and red represents
 positive mcIBAQ. Raw heatmaps display shared `log10(1 + mcIBAQ)` values.
-
-## Limitations
-
-- DIAMOND similarity is not proof of identical function.
-- OG identifiers are specific to the supplied OrthoFinder run.
-- Shared peptides and indistinguishable protein groups limit resolution.
-- Reference-proteome absence and proteomics non-detection are different states.
-- Tissue sampling, peptide observability, and detection limits affect coverage.
