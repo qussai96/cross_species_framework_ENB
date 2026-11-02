@@ -116,7 +116,8 @@ require_path "${TREE_HEATMAP_SCRIPT}"
 require_path "${INTERACTIVE_TREE_HEATMAP_SCRIPT}"
 require_path "${FAMILY_MAPPING_SCRIPT}"
 require_path "${FAMILY_MERGED_HEATMAP_SCRIPT}"
-require_path "${FAMILY_DIAMOND_DB_DIR}"
+require_path "${GLOBAL_DIAMOND_DB}"
+require_path "${TARGET_FAMILY_MAP}"
 require_path "${SPECIES_TREE}"
 require_path "${CORE_CROPS_ORTHOGROUPS}"
 require_path "$(dirname "${CORE_CROPS_ORTHOGROUPS}")/Orthogroups_UnassignedGenes.tsv"
@@ -167,7 +168,8 @@ TREE_HEATMAP_SCRIPT="${TREE_HEATMAP_SCRIPT}"
 INTERACTIVE_TREE_HEATMAP_SCRIPT="${INTERACTIVE_TREE_HEATMAP_SCRIPT}"
 FAMILY_MAPPING_SCRIPT="${FAMILY_MAPPING_SCRIPT}"
 FAMILY_MERGED_HEATMAP_SCRIPT="${FAMILY_MERGED_HEATMAP_SCRIPT}"
-FAMILY_DIAMOND_DB_DIR="${FAMILY_DIAMOND_DB_DIR}"
+GLOBAL_DIAMOND_DB="${GLOBAL_DIAMOND_DB}"
+TARGET_FAMILY_MAP="${TARGET_FAMILY_MAP}"
 SPECIES_TREE="${SPECIES_TREE}"
 INTENSITY_AGGREGATION="${INTENSITY_AGGREGATION}"
 PROTEIN_INTENSITIES="${PROTEIN_INTENSITIES}"
@@ -200,7 +202,8 @@ mkdir -p "\${OUTPUT_DIR}/logs" "\${MPLCONFIGDIR}"
     echo -e "setting\toutput_name\t\${OUTPUT_NAME}\t"
     echo -e "setting\taggregation\t\${INTENSITY_AGGREGATION}\t"
     echo -e "setting\tdiamond_query_cover\t\${DIAMOND_QUERY_COVER}\t"
-    echo -e "setting\tdiamond_low_complexity_fallback\tsensitive_unmasked_missing_pairs\tNormal hits are retained; fallback uses the same query coverage and E-value thresholds"
+    echo -e "setting\tdiamond_mapping\tglobal_unlimited_then_family_filter\tDIAMOND --max-target-seqs 0; best hit selected independently within every family"
+    echo -e "setting\tdiamond_low_complexity_fallback\tglobal_sensitive_unmasked_missing_pairs\tNormal hits are retained; fallback uses the same query coverage and E-value thresholds"
     echo -e "setting\tplant_workers\t\${PLANT_WORKERS}\t"
     echo -e "software\tpython\t\$("\${PYTHON_BIN}" --version 2>&1)\t\${PYTHON_BIN}"
     echo -e "software\tdiamond\t\$("\${DIAMOND_BIN}" version 2>&1 | head -n 1)\t\${DIAMOND_BIN}"
@@ -211,6 +214,7 @@ mkdir -p "\${OUTPUT_DIR}/logs" "\${MPLCONFIGDIR}"
                          "\${PROTEIN_DESCRIPTIONS}" \
                          "\${PROBLEM_REPORT}" "\${UNIPROT_MAPPING}" \
                          "\${FULL_ORTHOGROUP_MATRIX}" \
+                         "\${GLOBAL_DIAMOND_DB}" "\${TARGET_FAMILY_MAP}" \
                          "\${PY_SCRIPTS_DIR}/fix_fasta.py" \
                          "\${FAMILY_MAPPING_SCRIPT}" \
                          "\${FAMILY_MERGED_HEATMAP_SCRIPT}" \
@@ -230,17 +234,17 @@ echo "[STEP 1] Normalizing query FASTA at \$(date)"
   "\${INPUT_FASTA}" \
   "\${OUTPUT_DIR}/${OUTPUT_NAME}_fasta.faa"
 
-echo "[STEP 2] Mapping every query independently against each plant family at \$(date)"
+echo "[STEP 2] Global DIAMOND search and post-search family assignment at \$(date)"
 "\${PYTHON_BIN}" "\${FAMILY_MAPPING_SCRIPT}" \
     --query-fasta "\${OUTPUT_DIR}/${OUTPUT_NAME}_fasta.faa" \
     --metadata "\${METADATA}" \
-    --family-db-dir "\${FAMILY_DIAMOND_DB_DIR}" \
+    --global-db "\${GLOBAL_DIAMOND_DB}" \
+    --target-family-map "\${TARGET_FAMILY_MAP}" \
     --orthogroup-dir "\$(dirname "\${core_crops_orthogroups}")" \
     --output "\${OUTPUT_DIR}/other_files/per_family_best_hits.tsv" \
     --hit-dir "\${OUTPUT_DIR}/.family_diamond_hits" \
     --discard-raw-hits \
-    --workers "\${SEARCH_WORKERS}" \
-    --threads-per-search 1 \
+    --threads "\${SEARCH_WORKERS}" \
     --query-cover "\${DIAMOND_QUERY_COVER}" \
     2>&1 | tee "\${OUTPUT_DIR}/logs/family_mapping.log"
 

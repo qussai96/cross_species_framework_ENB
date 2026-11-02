@@ -1,7 +1,8 @@
 # Cross-species crop proteomics framework
 
-This framework maps query proteins independently against every plant family,
-connects qualifying DIAMOND hits to OrthoFinder orthogroups, and projects the
+This framework searches query proteins once against a global crop-protein
+database, selects the best qualifying hit independently within every plant
+family, connects those hits to OrthoFinder orthogroups, and projects the
 family-specific orthogroups onto tissue-resolved mcIBAQ proteomics. It produces
 static, per-plant, normalized, species-summary, and interactive heatmaps plus
 an auditable query-by-sample matrix.
@@ -28,7 +29,8 @@ Paths are set in `config.sh`; data need not be copied into this repository.
 |---|---|
 | `CORE_CROPS_ORTHOGROUPS` | OrthoFinder `Orthogroups.tsv`; first column `Orthogroup`, remaining headers corresponding to reference FASTAs. `Orthogroups_UnassignedGenes.tsv` must be beside it. |
 | `SPECIES_TREE` | Rooted OrthoFinder species tree in Newick format with matching terminal names. |
-| `FAMILY_DIAMOND_DB_DIR` | One `<Family>.dmnd` database for every metadata family; punctuation becomes `_`. |
+| `GLOBAL_DIAMOND_DB` | One DIAMOND database containing every reference protein identifier without sequence-level deduplication. |
+| `TARGET_FAMILY_MAP` | Gzip-compressed TSV with `target_protein` and `family`, containing exactly one row for every database entry. |
 | `PROTEIN_INTENSITIES` | One `<Crop>_mcIBAQ.intensities.tsv` per crop, containing `Protein ID` or `Protein`, optional `Indistinguishable Proteins`, and p-number columns such as `P095093_13`. |
 | `FULL_ORTHOGROUP_MATRIX` | Reusable OG × crop–p-number matrix built by `build_full_orthogroup_matrix.sh`. |
 | `METADATA` | TSV with `Name`, `FASTA`, `Family`, `Order`, `Class`. `Name` matches mcIBAQ filenames; `FASTA` identifies the reference proteome. |
@@ -52,18 +54,25 @@ cp config.example.sh config.sh
 
 Edit `config.sh`. It is ignored by Git.
 
-### Family DIAMOND databases
+### Global DIAMOND database
 
-If these are not already available, reference FASTA filenames must match the
-metadata `FASTA` column:
+Build the database and its target-to-family index once. Reference FASTA
+filenames must match the metadata `FASTA` column:
 
 ```bash
-python scripts/build_family_databases.py \
+python scripts/build_global_database.py \
   --metadata /path/to/all_crops_metadata.tsv \
   --fasta-dir /path/to/reference_fastas \
-  --output-dir /path/to/family_databases \
+  --output-dir /path/to/diamond \
   --threads 8
 ```
+
+This creates `all_family_proteins_full.dmnd` and
+`all_family_proteins.target_to_family.tsv.gz`. Identical amino-acid sequences
+with different protein IDs are deliberately retained: removing them would
+erase valid family or species identities before post-search filtering.
+If multiple crops intentionally reuse the same reference FASTA, that FASTA is
+included once and must have the same family annotation in every metadata row.
 
 ### Reusable full matrix
 
@@ -92,10 +101,12 @@ The command runs in the current terminal and prints progress as it works. The
 output basename must equal the category name. Options include
 `--query-cover 50`, `--plant-workers 4`, and `--overwrite`.
 
-Each query/family pair is searched normally with E-value ≤ `1e-5` and the
-configured coverage. Pairs lacking a hit are retried using DIAMOND
-`--sensitive --masking 0` with the same thresholds. A fallback never replaces
-a normal hit.
+Each query is searched against the complete database with
+`--max-target-seqs 0`, E-value ≤ `1e-5`, and the configured coverage. The
+reported targets are partitioned by family and the highest-bitscore hit is
+retained for each query/family pair. Queries missing at least one family are
+searched once more globally using DIAMOND `--sensitive --masking 0`; fallback
+hits fill only missing query/family pairs and never replace a normal hit.
 
 ## Outputs
 

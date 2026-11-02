@@ -2,7 +2,8 @@
 # Copy this file to config.sh and replace every /path/to/... value.
 
 DATA_DIR="/path/to/cross_species_data"
-FAMILY_DIAMOND_DB_DIR="${DATA_DIR}/family_databases"
+GLOBAL_DIAMOND_DB="${DATA_DIR}/diamond/all_family_proteins_full.dmnd"
+TARGET_FAMILY_MAP="${DATA_DIR}/diamond/all_family_proteins.target_to_family.tsv.gz"
 
 ORTHOFINDER_DIR="${DATA_DIR}/orthofinder_results"
 CORE_CROPS_ORTHOGROUPS="${ORTHOFINDER_DIR}/Orthogroups/Orthogroups.tsv"
